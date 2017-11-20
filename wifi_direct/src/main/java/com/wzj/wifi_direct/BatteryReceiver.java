@@ -8,7 +8,7 @@ import android.util.Log;
 /**
  * Created by WZJ on 2017/11/8.
  */
-
+///1231
 public class BatteryReceiver extends BroadcastReceiver {
     public static final String TAG = "BatteryReceiver";
     private WiFiDirectActivity wiFiDirectActivity;
