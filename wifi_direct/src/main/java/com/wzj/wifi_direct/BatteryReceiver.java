@@ -4,7 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
-
+//看这里！！@！@！
 /**
  * Created by WZJ on 2017/11/8.
  */
