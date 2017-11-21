@@ -32,6 +32,9 @@ public class UDPBroadcast implements Runnable {
     private int type = 0;
     private Map<String, Map<String, Member>> memberMap;
     private Handler mHandler;
+    private String messageType = "0";
+    private Member member;
+    private String ipAddress;
 
     public void setType(int type) {
         this.type = type;
@@ -42,6 +45,21 @@ public class UDPBroadcast implements Runnable {
         this.memberMap = memberMap;
     }
 
+    public String getMessageType() {
+        return messageType;
+    }
+
+    public void setMessageType(String messageType) {
+        this.messageType = messageType;
+    }
+
+    public String getIpAddress() {
+        return ipAddress;
+    }
+
+    public void setIpAddress(String ipAddress) {
+        this.ipAddress = ipAddress;
+    }
 
     public UDPBroadcast(Handler mHandler) {
         this.mHandler = mHandler;
@@ -49,6 +67,12 @@ public class UDPBroadcast implements Runnable {
 
     public UDPBroadcast(Map<String, Map<String, Member>> memberMap) {
         this.memberMap = memberMap;
+    }
+
+    public UDPBroadcast(int type, String messageType, Member member) {
+        this.type = type;
+        this.messageType = messageType;
+        this.member = member;
     }
 
     @Override
@@ -67,37 +91,75 @@ public class UDPBroadcast implements Runnable {
         if (type == 0){
             //发广播包
             System.out.println("发送广播包！！！！！！");
-            try {
-                Gson gson = new Gson();
-                String str = gson.toJson(memberMap);
-                System.out.println("JSON字符串: "+ str.trim());
-                buf = str.getBytes();
-                outPacket = new DatagramPacket(buf, str.length(), InetAddress.getByName(BD_ADDRESS), PORT);
-                datagramSocket.send(outPacket);
+            if(messageType.equals("0")){
+                try {
+                    Gson gson = new Gson();
+                    String str = messageType + "/" +gson.toJson(memberMap);
+                    System.out.println("JSON字符串: "+ str.trim());
+                    buf = str.getBytes();
+                    outPacket = new DatagramPacket(buf, str.length(), InetAddress.getByName(BD_ADDRESS), PORT);
+                    datagramSocket.send(outPacket);
 
-            } catch (UnknownHostException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
+                } catch (UnknownHostException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }else if(messageType.equals("1")){
+                try {
+                    Gson gson = new Gson();
+                    String str = messageType + "/" +gson.toJson(member);
+                    System.out.println("JSON字符串: "+ str.trim());
+                    buf = str.getBytes();
+                    outPacket = new DatagramPacket(buf, str.length(), InetAddress.getByName(BD_ADDRESS), PORT);
+                    datagramSocket.send(outPacket);
+                } catch (UnknownHostException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
+
         }else if (type == 1) {
             //收广播包
             try {
                 while (true){
                     System.out.println("接收广播包！！！！！！");
                     datagramSocket.receive(inPacket);
-                    String str = new String(inPacket.getData(), 0, inPacket.getLength());
-                    System.out.println(inPacket.getAddress().getHostAddress()+"收到广播包："+ str);
-                    Message msg = new Message();
-                    msg.what = 5;
-                    Bundle bundle = new Bundle();
-                    bundle.putString("memberMap", str);
-                    msg.setData(bundle);
-                    mHandler.sendMessage(msg);
+                    if(!inPacket.getAddress().getHostAddress().equals(ipAddress)){
+                        String str = new String(inPacket.getData(), 0, inPacket.getLength());
+                        System.out.println(inPacket.getAddress().getHostAddress()+"收到广播包："+ str);
+                        String mStr[] = str.split("/");
+                        if(mStr[0].equals("0")){
+                            Message msg = new Message();
+                            msg.what = 5;
+                            Bundle bundle = new Bundle();
+                            bundle.putString("memberMap", mStr[1]);
+                            msg.setData(bundle);
+                            mHandler.sendMessage(msg);
+
+                        }else if(mStr[0].equals("1")){
+                            Message msg = new Message();
+                            msg.what = 8;
+                            Bundle bundle = new Bundle();
+                            bundle.putString("member", mStr[1]);
+                            msg.setData(bundle);
+                            mHandler.sendMessage(msg);
+                        }
+                    }
                 }
 
             } catch (IOException e) {
                 Log.e(WiFiDirectActivity.TAG, "UDP 98");
+                if(ClientThread.timer != null){
+                    ClientThread.timer.cancel();
+                    ClientThread.timer = null;
+                }
+                if(ServerThread.timer != null){
+                    ServerThread.timer.cancel();
+                    ServerThread.timer = null;
+                }
+
                 e.printStackTrace();
             } finally {
                 this.close();

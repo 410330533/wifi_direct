@@ -12,6 +12,9 @@ import com.wzj.handover.algorithm.FNQDAlgorithmSimple;
 import com.wzj.handover.algorithm.RSSIBasedAlgorithm;
 import com.wzj.wifi_direct.WiFiDirectActivity;
 
+import java.util.Timer;
+import java.util.TimerTask;
+
 /**
  * Created by WZJ on 2017/11/13.
  */
@@ -93,13 +96,15 @@ public class MemberParametersCollection implements Runnable {
                             wifiP2pManager.discoverPeers(channel, new ActionListener() {
                                 @Override
                                 public void onSuccess() {
-                                    try {
-                                        Thread.sleep(3000);
-                                        config.deviceAddress = optimalNetwork.getWifiP2pDevice().deviceAddress;
-                                        wiFiDirectActivity.connect(config);
-                                    } catch (InterruptedException e) {
-                                        e.printStackTrace();
-                                    }
+                                    Timer timer = new Timer();
+                                    timer.schedule(new TimerTask() {
+                                        @Override
+                                        public void run() {
+                                            config.deviceAddress = optimalNetwork.getWifiP2pDevice().deviceAddress;
+                                            wiFiDirectActivity.connect(config);
+                                        }
+                                    },3000);
+                                    //Thread.sleep(3000);
 
                                 }
 

@@ -10,11 +10,14 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 
+import com.wzj.bean.Member;
 import com.wzj.util.GetPath;
 import com.wzj.util.StringToLong;
+import com.wzj.wifi_direct.BatteryReceiver;
 import com.wzj.wifi_direct.DeviceDetailFragment;
 import com.wzj.wifi_direct.WiFiDirectActivity;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -23,10 +26,15 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
+
+import static com.wzj.wifi_direct.BatteryReceiver.power;
 
 /**
  * Created by wzj on 2017/3/3.
@@ -44,7 +52,8 @@ public class ClientThread implements Runnable {
     private Map<String, Socket> tcpConnections;
     private String type = "read";
     private String message;
-
+    public static Timer timer;
+    private long broadcastPeriod = 1000*60;
     public ClientThread(Context context, Handler mHandler, String address, int port, WifiP2pDevice myDevice, Map<String, Socket> tcpConnections) {
         this.context = context;
         this.mHandler = mHandler;
@@ -115,11 +124,29 @@ public class ClientThread implements Runnable {
                     writer.newLine();
                     writer.write(myDevice.deviceAddress);
                     writer.newLine();
+                    writer.write(String.valueOf(BatteryReceiver.power));
+                    writer.newLine();
                     writer.flush();
+                    BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                    String ipAddress = bufferedReader.readLine();
                     //启动广播包接收线程
                     UDPBroadcast udpBroadcast = new UDPBroadcast(mHandler);
                     udpBroadcast.setType(1);
+                    udpBroadcast.setIpAddress(ipAddress);
                     new Thread(udpBroadcast).start();
+                    //周期性广播本机信息
+                    final Member member = new Member(ipAddress, myDevice.deviceName, myDevice.deviceAddress, power);
+                    if(timer == null){
+                        timer = new Timer();
+                        timer.schedule(new TimerTask() {
+                            @Override
+                            public void run() {
+                                member.setPower(power);
+                                UDPBroadcast udpBroadcastWrite = new UDPBroadcast(0, "1", member);
+                                new Thread(udpBroadcastWrite).start();
+                            }
+                        }, broadcastPeriod, broadcastPeriod);
+                    }
                 }
             }
             Log.d(WiFiDirectActivity.TAG, "ClientThread：client socket已连接" + socket.isConnected());

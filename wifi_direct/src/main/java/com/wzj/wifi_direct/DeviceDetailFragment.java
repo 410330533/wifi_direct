@@ -8,6 +8,8 @@ import android.content.DialogInterface;
 import android.content.DialogInterface.OnCancelListener;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
+import android.content.SharedPreferences.Editor;
 import android.net.Uri;
 import android.net.wifi.WpsInfo;
 import android.net.wifi.p2p.WifiP2pConfig;
@@ -53,6 +55,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Timer;
 
+
 /**
  * Created by wzj on 2017/1/17.
  */
@@ -75,24 +78,23 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
     private Handler mHandler;
     private static ServerThread serverReadThread;
     private static MemberServerThread memberServerThread;
-    private static Map<String, Map<String, Member>> memberMap = new LinkedHashMap<>();
-    private static Map<String, Socket> tcpConnections = new HashMap<>();
-    private List<Member> memberList = new ArrayList<>();
-    private static String choiceIp;
+    private Map<String, Map<String, Member>> memberMap = new LinkedHashMap<>();//记录所有的member包括自身
+    private Map<String, Socket> tcpConnections = new HashMap<>();//记录所有连接
+    private List<Member> memberList = new ArrayList<>();//页面显示（不包括自身）
+    private String choiceIp;
     private String choiceMac;
     private WiFiDirectActivity activity;
-    private static WifiP2pDevice myDevice;
+    private WifiP2pDevice myDevice;
     public static int preGroupSize = 0;
     private SocketService socketService = null;
     private boolean isStop = false;
-    private static Map<String ,List<ChatModel>> chatMap = new LinkedHashMap<>();
+    private Map<String ,List<ChatModel>> chatMap = new LinkedHashMap<>();
     private ServiceConnection mConnection;
     private Timer timer = new Timer();
     private ComputeBandwidth computeBandwidth = new ComputeBandwidth();
     private float bandwidth = 0;
-
     public void setMyDevice(WifiP2pDevice myDevice) {
-        DeviceDetailFragment.myDevice = myDevice;
+        this.myDevice = myDevice;
     }
 
     //onCreateView()：每次创建、绘制该Fragment的View组件时回调该方法，Fragment将会显示该方法返回的View组件。
@@ -101,7 +103,27 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         this.setListAdapter(new MemberListAdapter(getActivity(), R.layout.row_member, memberList));
+        ((MemberListAdapter)getListAdapter()).notifyDataSetChanged();
+        /*chatFlag = false;
+        mConnection = new ServiceConnection() {
+            @Override
+            public void onServiceConnected(ComponentName name, IBinder service) {
+                socketService = ((SocketService.MBinder) service).getService();
+                socketService.setTcpConnections(tcpConnections);
+                Log.d("SocketService","设置tcpConnections");
+            }
+
+            @Override
+            public void onServiceDisconnected(ComponentName name) {
+
+            }
+        };
+        Intent serviceIntent = new Intent(activity, SocketService.class);
+        activity.bindService(serviceIntent, mConnection, Context.BIND_AUTO_CREATE);*/
+
     }
+
+
     private void mapToList(Map<String, Map<String, Member>> memberMap){
         List<Member> temp =new ArrayList<>();
         for(Map.Entry<String, Map<String, Member>> map : memberMap.entrySet()){
@@ -246,6 +268,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
     @Override
     public void onResume() {
         super.onResume();
+        this.setListAdapter(new MemberListAdapter(getActivity(), R.layout.row_member, memberList));
         mapToList(memberMap);
         System.out.println("MemberMap的大小："+memberMap.size());
         ((MemberListAdapter)getListAdapter()).notifyDataSetChanged();
@@ -262,12 +285,30 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
         if(socketService != null){
             getActivity().unbindService(mConnection);
         }
+        SharedPreferences sharedPreferences = activity.getSharedPreferences("DDFragment", Context.MODE_PRIVATE);
+        Editor editor = sharedPreferences.edit();
+        Gson gson = new Gson();
+        editor.putString("memberMap", gson.toJson(this.getMemberMap()));
+        editor.putString("myDevice", gson.toJson(this.getMyDevice()));
+        editor.commit();
         super.onDestroy();
     }
 
     @Nullable
     @Override
     public View onCreateView(final LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+        Gson gson =new Gson();
+        SharedPreferences sharedPreferences = activity.getSharedPreferences("DDFragment", Context.MODE_PRIVATE);
+        String mStr = sharedPreferences.getString("memberMap", "");
+        String dStr = sharedPreferences.getString("myDevice", "");
+        myDevice = gson.fromJson(dStr.trim(), new TypeToken<WifiP2pDevice>(){}.getType());
+        Log.d("sharedPreferences", mStr);
+        if(!mStr.equals("")){
+            Map<String, Map<String, Member>> memberMapTemp = gson.fromJson(mStr.trim(), new TypeToken<Map<String, Map<String, Member>>>(){}.getType());
+            memberMap = memberMapTemp;
+            mapToList(memberMap);
+            ((MemberListAdapter)getListAdapter()).notifyDataSetChanged();
+        }
 
         mHandler = new Handler(){
             @Override
@@ -332,12 +373,14 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                             }
                         }
                         ((MemberListAdapter)getListAdapter()).notifyDataSetChanged();
-                        if(((WiFiDirectBroadcastReceiver)((WiFiDirectActivity)getActivity()).getReceiver()).isConnected()
-                                && memberList.size() == 0){
-                            clearMembers();
-                        }else if(memberList.size() == 0){
-                            //((WiFiDirectActivity)getActivity()).resetData();
-                            Log.d(WiFiDirectActivity.TAG, "No member");
+                        if((getActivity()) != null){
+                            if((((WiFiDirectActivity)getActivity()).getReceiver()).isConnected()
+                                    && memberList.size() == 0){
+                                clearMembers();
+                            }else if(memberList.size() == 0){
+                                //((WiFiDirectActivity)getActivity()).resetData();
+                                Log.d(WiFiDirectActivity.TAG, "No member");
+                            }
                         }
                         break;
                     case 6:
@@ -369,6 +412,17 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                                 cHandler.sendMessage(msge);
                             }
                         }
+                        break;
+                    case 8:
+                        String memberStr = msg.getData().getString("member");
+                        Gson memberGson =new Gson();
+                        Member member = memberGson.fromJson(memberStr.trim(), new TypeToken<Member>(){}.getType());
+                        Map<String ,Member> tMap = new HashMap<>();
+                        tMap.put(member.getIpAddress(), member);
+                        memberMap.put(member.getMacAddress(), tMap);
+                        mapToList(memberMap);
+                        Log.d("case8",""+memberMap.size()+"/"+memberList.size());
+                        ((MemberListAdapter)getListAdapter()).notifyDataSetChanged();
 
                         break;
                 }
@@ -524,7 +578,9 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                 }
                 try {
                     //关闭该设备对应的socket
-                    tcpConnections.get(removeIp).close();
+                    if(tcpConnections.get(removeIp) != null){
+                        tcpConnections.get(removeIp).close();
+                    }
                     tcpConnections.remove(removeIp);
                 } catch (IOException e) {
                     e.printStackTrace();
@@ -601,6 +657,9 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
         memberMap.clear();
         clearMembers();
         tcpConnections.clear();
+        SharedPreferences sharedPreferences = activity.getSharedPreferences("DDFragment", Context.MODE_PRIVATE);
+        Editor editor = sharedPreferences.edit();
+        editor.clear();
     }
     //Member被动断开
     public void closeConnections(){
@@ -696,5 +755,25 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
 
     public void setBandwidth(float bandwidth) {
         this.bandwidth = bandwidth;
+    }
+
+    public Map<String, Map<String, Member>> getMemberMap() {
+        return memberMap;
+    }
+
+    public void setMemberMap(Map<String, Map<String, Member>> memberMap) {
+        this.memberMap = memberMap;
+    }
+
+    public Map<String, Socket> getTcpConnections() {
+        return tcpConnections;
+    }
+
+    public List<Member> getMemberList() {
+        return memberList;
+    }
+
+    public WifiP2pDevice getMyDevice() {
+        return myDevice;
     }
 }

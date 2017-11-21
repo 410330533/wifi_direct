@@ -13,10 +13,12 @@ import android.util.Log;
 import com.wzj.bean.Member;
 import com.wzj.util.GetPath;
 import com.wzj.util.StringToLong;
+import com.wzj.wifi_direct.BatteryReceiver;
 import com.wzj.wifi_direct.DeviceDetailFragment;
 import com.wzj.wifi_direct.WiFiDirectActivity;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -25,11 +27,14 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 
 /**
  * Created by wzj on 2017/3/3.
@@ -46,6 +51,8 @@ public class ServerThread implements Runnable {
     private Map<String, Socket> tcpConnections;
     private static Map<String, Map<String, Member>> memberMap;
     private WifiP2pDevice myDevice;
+    public static Timer timer;
+    private long bradcastPeriod = 1000*60;
 
     public ServerThread(Context context, Map<String, Map<String, Member>> memberMap, Handler mHandler, String type, Map<String, Socket> tcpConnections, WifiP2pDevice myDevice) {
         this.context = context;
@@ -55,8 +62,6 @@ public class ServerThread implements Runnable {
         this.tcpConnections = tcpConnections;
         this.myDevice = myDevice;
     }
-
-
 
     public void setType(String type) {
         this.type = type;
@@ -77,6 +82,24 @@ public class ServerThread implements Runnable {
                 serverSocket = new ServerSocket();
                 serverSocket.setReuseAddress(true);
                 serverSocket.bind(new InetSocketAddress(DeviceDetailFragment.GO_ADDRESS, DeviceDetailFragment.PORT));
+                //服务器端开启广播读
+                UDPBroadcast udpBroadcast = new UDPBroadcast(mHandler);
+                udpBroadcast.setType(1);
+                udpBroadcast.setIpAddress(DeviceDetailFragment.GO_ADDRESS);
+                new Thread(udpBroadcast).start();
+                //周期性广播本机信息
+                final Member member = new Member(DeviceDetailFragment.GO_ADDRESS, "(GO)"+myDevice.deviceName, myDevice.deviceAddress, BatteryReceiver.power);
+                if(timer == null){
+                    timer = new Timer();
+                    timer.schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            member.setPower(BatteryReceiver.power);
+                            UDPBroadcast udpBroadcastWrite = new UDPBroadcast(0, "1", member);
+                            new Thread(udpBroadcastWrite).start();
+                        }
+                    }, bradcastPeriod, bradcastPeriod);
+                }
             }
             Log.d(WiFiDirectActivity.TAG, "ServerThread：线程启动");
             if(type.equals("read")){
@@ -88,13 +111,19 @@ public class ServerThread implements Runnable {
                     BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(client.getInputStream()));
                     String deviceName = bufferedReader.readLine();
                     String macAddress = bufferedReader.readLine();
-                    System.out.println("看这里："+ macAddress);
+                    float power = Float.valueOf(bufferedReader.readLine());
+                    System.out.println("看这里power："+ power);
+                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(client.getOutputStream()));
+                    writer.write(client.getInetAddress().getHostAddress());
+                    writer.newLine();
+                    writer.flush();
                     //更新tcpConnections
                     tcpConnections.put(client.getInetAddress().getHostAddress(), client);
                     //更新memberMap
-                    Member member = new Member(client.getInetAddress().getHostAddress(), deviceName, macAddress);
+                    Member member = new Member(client.getInetAddress().getHostAddress(), deviceName, macAddress, power);
                     //加入GO的信息
-                    Member groupOwner = new Member(DeviceDetailFragment.GO_ADDRESS, "(GO)"+myDevice.deviceName, myDevice.deviceAddress);
+                    Member groupOwner = new Member(DeviceDetailFragment.GO_ADDRESS, "(GO)"+myDevice.deviceName, myDevice.deviceAddress, BatteryReceiver.power);
+                    System.out.println("看这里power："+ member.getPower());
                     Map<String, Member> tempMap = new HashMap<>();
                     if(!memberMap.containsKey(myDevice.deviceAddress)){
                         Map<String, Member> tempMapG = new HashMap<>();
@@ -110,9 +139,16 @@ public class ServerThread implements Runnable {
                     new Thread(udpBroadcast).start();
                     System.out.println("ServerThread: "+ memberMap.size()+" " +memberMap.get(macAddress));
                     new Thread(new ServerRead(client)).start();
-                    Thread.sleep(5000);
-                    udpBroadcast = new UDPBroadcast(memberMap);
-                    new Thread(udpBroadcast).start();
+                    //再发一遍广播
+                    Timer timer = new Timer();
+                    timer.schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            UDPBroadcast udpBroadcast = new UDPBroadcast(memberMap);
+                            new Thread(udpBroadcast).start();
+                        }
+                    }, 5000);
+
                 }
             }else if(type.equals("write")) {
                 new Thread(new ServerWrite(socket)).start();
@@ -120,10 +156,7 @@ public class ServerThread implements Runnable {
         } catch (IOException e) {
             Log.e(WiFiDirectActivity.TAG, "ServerThread 118");
             e.printStackTrace();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
         }
-
     }
     public static void close(){
         if(serverSocket != null && !serverSocket.isClosed()){

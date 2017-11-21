@@ -1,9 +1,9 @@
 package com.wzj.wifi_direct;
 
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.ServiceConnection;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.net.wifi.p2p.WifiP2pConfig;
@@ -22,11 +22,14 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.Toast;
 
+import com.wzj.bean.Member;
 import com.wzj.bean.Network;
 import com.wzj.handover.MemberParametersCollection;
 import com.wzj.handover.UpdateServicesThread;
+import com.wzj.service.SocketService;
 import com.wzj.wifi_direct.DeviceListFragment.DeviceActionListener;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -62,14 +65,16 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     private final IntentFilter intentFilter  = new IntentFilter();
     private final IntentFilter batteryIntentFilter  = new IntentFilter();
     private WifiP2pManager.Channel channel;
-    private BroadcastReceiver receiver = null;
+    private WiFiDirectBroadcastReceiver receiver = null;
     private BatteryReceiver batteryReceiver = null;
     private static final int CPU_COUNT = Runtime.getRuntime().availableProcessors();
     public static ThreadPoolExecutor threadPoolExecutor;
     private Map<String, Network> candidateNetworks = new ConcurrentHashMap<>();
     private static MemberParametersCollection memberParametersCollection;
     public static Long dataSize = Long.valueOf(0);
-    public static long currentTime = 0;
+    private Map<String, Member> lastMembers = new HashMap<>();
+    private SocketService socketService;
+    private ServiceConnection serviceConnection;
 
     public boolean getGroupOwnerFind() {
         return groupOwnerFind;
@@ -93,7 +98,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         return candidateNetworks;
     }
 
-    public BroadcastReceiver getReceiver() {
+    public WiFiDirectBroadcastReceiver getReceiver() {
         return receiver;
     }
 
@@ -120,6 +125,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
             memberParametersCollection = new MemberParametersCollection(this, manager, channel);
             threadPoolExecutor.execute(memberParametersCollection);
         }
+
 
     }
     /** register the BroadcastReceiver with the intent values to be matched */
@@ -187,6 +193,31 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
 
     }
 
+    /*@Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if(socketService == null){
+            serviceConnection = new ServiceConnection() {
+                @Override
+                public void onServiceConnected(ComponentName name, IBinder service) {
+                    socketService = ((SocketService.MBinder)service).getService();
+                    DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment)getFragmentManager().findFragmentById(R.id.frag_detail);
+                    socketService.setTcpConnections(deviceDetailFragment.getTcpConnections());
+                    System.out.println("service连接上了！！！！！！！！！");
+                }
+
+                @Override
+                public void onServiceDisconnected(ComponentName name) {
+                    socketService = null;
+                }
+            };
+        }
+        Intent serviceIntent = new Intent(this, SocketService.class);
+        this.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
+        DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment)getFragmentManager().findFragmentById(R.id.frag_detail);
+        Gson gson = new Gson();
+        outState.putString("memberMap", gson.toJson(deviceDetailFragment.getMemberMap()));
+    }*/
 
     /**
      * Remove all peers and clear all fields. This is called on
@@ -272,12 +303,11 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
 
     @Override
     public void connect() {
-        candidateNetworks.clear();
         DeviceDetailFragment fragment = (DeviceDetailFragment)getFragmentManager()
                 .findFragmentById(R.id.frag_detail);
         WifiP2pConfig wifiP2pConfig = fragment.connect();
-        groupOwnerMac = wifiP2pConfig.deviceAddress;
         if(wifiP2pConfig != null){
+            candidateNetworks.clear();
             manager.connect(channel, wifiP2pConfig, new ActionListener() {
                 @Override
                 public void onSuccess() {
@@ -306,10 +336,10 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         }
 
     }
-
     public void connect(WifiP2pConfig wifiP2pConfig) {
-        candidateNetworks.clear();
+
         if(wifiP2pConfig != null){
+            candidateNetworks.clear();
             manager.connect(channel, wifiP2pConfig, new ActionListener() {
                 @Override
                 public void onSuccess() {
@@ -326,7 +356,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
                         Toast.makeText(WiFiDirectActivity.this, "Aborting connection",
                                 Toast.LENGTH_SHORT).show();
                     }
-
                     @Override
                     public void onFailure(int reason) {
                         Toast.makeText(WiFiDirectActivity.this, "Connect abort request failed, Reason Code: "
@@ -337,7 +366,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
             });
         }
     }
-
     public void removeGroup() {
 
         final DeviceDetailFragment fragment = (DeviceDetailFragment)getFragmentManager()
@@ -634,4 +662,27 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     public Channel getChannel() {
         return channel;
     }
+
+    public Map<String, Member> getLastMembers() {
+        DeviceDetailFragment detailFragment = (DeviceDetailFragment)getFragmentManager().findFragmentById(R.id.frag_detail);
+        float maxPower = 0;
+        String maxMac = "";
+        for(Map.Entry<String, Map<String, Member>> map : detailFragment.getMemberMap().entrySet()){
+            for(Map.Entry<String, Member> mapE : map.getValue().entrySet()){
+                lastMembers.put(map.getKey(), mapE.getValue());
+                if(mapE.getValue().getPower() > maxPower){
+                    maxPower = mapE.getValue().getPower();
+                    maxMac = map.getKey();
+                }
+            }
+        }
+        Log.d("handoverWithinGroup", maxMac + "/" +maxPower);
+        return lastMembers;
+    }
+
+    public void setLastMembers(Map<String, Member> lastMembers) {
+        this.lastMembers = lastMembers;
+    }
+
+
 }

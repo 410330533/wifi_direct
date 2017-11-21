@@ -4,11 +4,19 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.net.NetworkInfo;
+import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pManager;
+import android.net.wifi.p2p.WifiP2pManager.ActionListener;
 import android.util.Log;
 
+import com.wzj.bean.Member;
 import com.wzj.handover.MemberParametersCollection;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 
 
 /**
@@ -24,8 +32,8 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
     private WifiP2pManager.Channel channel;
     private WiFiDirectActivity activity;
     private boolean isConnected = false;
-    public WiFiDirectBroadcastReceiver() {
-    }
+    private Map<String, Member> lastMembers = new HashMap<>();
+    private boolean lowPower = false;
 
     public WiFiDirectBroadcastReceiver(WifiP2pManager manager, WifiP2pManager.Channel channel, WiFiDirectActivity activity){
         super();
@@ -88,8 +96,15 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
                 //请求group信息
                 manager.requestGroupInfo(channel, fragment);
             }else{
-                activity.resetData();
+                //当电量低时执行组内切换
                 DeviceDetailFragment detailFragment = (DeviceDetailFragment) activity.getFragmentManager().findFragmentById(R.id.frag_detail);
+                if(lowPower && activity.getIsGroupOwner()){
+                    //组主组内切换
+                    this.handoverWithinGroup();
+                }/*else if(!activity.getIsGroupOwner() && detailFragment.getMemberMap().size() != 0){
+                    this.handoverWithinGroup();
+                }*/
+                activity.resetData();
                 detailFragment.closeConnections();
                 if(activity.getMemberParametersCollection() == null){
                     MemberParametersCollection memberParametersCollection = new MemberParametersCollection(activity, manager, channel);
@@ -135,5 +150,84 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
         isConnected = connected;
     }
 
+    public void handoverWithinGroup(){
+        DeviceDetailFragment detailFragment = (DeviceDetailFragment) activity.getFragmentManager().findFragmentById(R.id.frag_detail);
+        float maxPower = 0;
+        String maxMac = "";
+        for(Map.Entry<String, Map<String, Member>> map : detailFragment.getMemberMap().entrySet()){
+            for(Map.Entry<String, Member> mapE : map.getValue().entrySet()){
+                lastMembers.put(map.getKey(), mapE.getValue());
+                if(mapE.getValue().getPower() > maxPower){
+                    maxPower = mapE.getValue().getPower();
+                    maxMac = map.getKey();
+                }
+            }
+        }
+        Log.d("handoverWithinGroup", maxMac + "/" +maxPower);
+        final String deviceAddress = maxMac;
+        //如果当前设备电量最高，主动创建组
+        if(detailFragment.getMyDevice().deviceAddress.equals(maxMac)){
+            Timer timer = new Timer();
+            timer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    activity.createGroup();
+                }
+            }, 2000);
+        }else {//若电量最高的设备不是当前设备
+            final WifiP2pConfig wifiP2pConfig = new WifiP2pConfig();
+            wifiP2pConfig.deviceAddress = deviceAddress;
+            manager.discoverPeers(channel, new ActionListener() {
+                @Override
+                public void onSuccess() {
+                    Timer timer = new Timer();
+                    timer.schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            activity.connect(wifiP2pConfig);
+                        }
+                    }, 3000);
 
+                }
+                @Override
+                public void onFailure(int reason) {
+
+                }
+            });
+            /*Timer timer = new Timer();
+            timer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    final WifiP2pConfig wifiP2pConfig = new WifiP2pConfig();
+                    wifiP2pConfig.deviceAddress = deviceAddress;
+                    manager.discoverPeers(channel, new ActionListener() {
+                        @Override
+                        public void onSuccess() {
+                            try {
+                                Thread.sleep(3000);
+                                activity.connect(wifiP2pConfig);
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+
+                        }
+                        @Override
+                        public void onFailure(int reason) {
+
+                        }
+                    });
+
+                }
+            }, 2000);*/
+        }
+
+    }
+
+    public boolean isLowPower() {
+        return lowPower;
+    }
+
+    public void setLowPower(boolean lowPower) {
+        this.lowPower = lowPower;
+    }
 }

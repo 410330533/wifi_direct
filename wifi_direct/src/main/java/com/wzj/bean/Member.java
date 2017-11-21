@@ -8,12 +8,20 @@ public class Member {
     private String ipAddress;
     private String deviceName;
     private String macAddress;
+    private float power;
     //private Socket socket = null;
 
     public Member(String ipAddress, String deviceName, String macAddress) {
         this.ipAddress = ipAddress;
         this.deviceName = deviceName;
         this.macAddress = macAddress;
+    }
+
+    public Member(String ipAddress, String deviceName, String macAddress, float power) {
+        this.ipAddress = ipAddress;
+        this.deviceName = deviceName;
+        this.macAddress = macAddress;
+        this.power = power;
     }
 
     public void setMacAddress(String macAddress) {
@@ -42,6 +50,14 @@ public class Member {
 
     public String getDeviceName() {
         return deviceName;
+    }
+
+    public float getPower() {
+        return power;
+    }
+
+    public void setPower(float power) {
+        this.power = power;
     }
 /*
     public Socket getSocket() {
