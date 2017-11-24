@@ -46,6 +46,7 @@ import com.wzj.util.ComputeBandwidth;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -302,7 +303,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
         String mStr = sharedPreferences.getString("memberMap", "");
         String dStr = sharedPreferences.getString("myDevice", "");
         myDevice = gson.fromJson(dStr.trim(), new TypeToken<WifiP2pDevice>(){}.getType());
-        Log.d("sharedPreferences", mStr);
+        Log.d("sharedPreferences", tcpConnections.size()+"/"+mStr);
         if(!mStr.equals("")){
             Map<String, Map<String, Member>> memberMapTemp = gson.fromJson(mStr.trim(), new TypeToken<Map<String, Map<String, Member>>>(){}.getType());
             memberMap = memberMapTemp;
@@ -535,8 +536,27 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
 
     @Override
     public void onGroupInfoAvailable(WifiP2pGroup group) {
-        System.out.println("组信息变化！！！！"+group.getNetworkName());
-        ((WiFiDirectActivity)getActivity()).setSsid(group.getNetworkName());
+        String ssid = group.getNetworkName();
+        try {
+            if(ssid.indexOf("\\") != -1){
+                String[] subString = ssid.split("-");
+                String sourceArr[] = subString[subString.length-1].split("\\\\");
+                byte[] byteArr = new byte[sourceArr.length - 1];
+                for (int i = 1; i < sourceArr.length; i++) {
+                    Integer hexInt = Integer.decode("0" + sourceArr[i]);
+                    byteArr[i - 1] = hexInt.byteValue();
+                }
+                ssid = "";
+                for(int i = 0;i < subString.length-1;i++){
+                    ssid+=subString[i]+"-";
+                }
+                ssid += new String(byteArr, "utf-8");
+            }
+            System.out.println("组信息变化！！！！"+ ssid);
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        }
+        ((WiFiDirectActivity)getActivity()).setSsid(ssid);
         ((WiFiDirectActivity)getActivity()).setIsGroupOwner(group.isGroupOwner());
         ((WiFiDirectActivity)getActivity()).setGroupSize(group.getClientList().size());
         if(group.isGroupOwner()){

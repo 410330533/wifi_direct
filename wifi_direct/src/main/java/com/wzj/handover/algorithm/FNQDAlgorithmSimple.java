@@ -14,25 +14,30 @@ import Jama.Matrix;
  */
 
 public class FNQDAlgorithmSimple implements Runnable{
-    /*public static void main(String[] args){
-        List<Network> candidateNetwork = new ArrayList<>();
-        Network currentNetwork = new Network(3, -70, 0.7, 60, 0.2);
-        *//*Network a = new Network(0, -40, 0.6, 50, 0.5);
-        Network b = new Network(1, -50, 0.8, 70, 0.8);
-        Network c = new Network(2, -90, 0.2, 20, 1);
-        candidateNetwork.add(a);
-        candidateNetwork.add(b);
-        candidateNetwork.add(c);*//*
-        for(int i=0;i<1000;i++){
+  /*  public static void main(String[] args){
+        Map<String, Network> candidateNetwork = new HashMap<>();
+        Network currentNetwork = new Network(null, -70, 2/15.0, 0.7, 0.8, true);
+        currentNetwork.setName("a");
+        Network b = new Network(null, -15, 1/15.0, 0.8, 1, false);
+        b.setName("b");
+        Network c = new Network(null, -10, 2/15.0, 0.9, 0.8, false);
+        c.setName("c");
+        Network d = new Network(null, -20, 0, 1, 0.4, false);
+        d.setName("d");
+        candidateNetwork.put("a", currentNetwork);
+        candidateNetwork.put("b", b);
+        candidateNetwork.put("c", c);
+        candidateNetwork.put("d", d);
+        *//*for(int i=0;i<1000;i++){
             Network network = new Network(i, -i, 0.6, 50, 0.5);
             candidateNetwork.add(network);
-        }
-        double mParameters[][] = new double[][]{{-100, -60, -30}, {0, 0.5, 1}, {0, 50, 100}, {0, 0.5, 1}};
-        double weights[] = new double[]{0.22, 0.1, 0.47, 0.21};
-        double t = 0;
-        FNQDAlgorithmSimple fnqdAlgorithm = new FNQDAlgorithmSimple();
+        }*//*
+        double mParameters[][] = new double[][]{{-100, -60, 0}, {0, 0.5, 1}, {0, 0.5, 1}, {0, 0.5, 1}};
+        double weights[] = new double[]{0.38, 0.17, 0.34, 0.11};
+        double t = 0.2;
+        FNQDAlgorithmSimple fnqdAlgorithm = new FNQDAlgorithmSimple(candidateNetwork, mParameters, weights, t);
         long startTime=System.currentTimeMillis();   //获取开始时间
-        Network optimalNetwork = fnqdAlgorithm.fnqdProcess(currentNetwork, candidateNetwork, mParameters, weights, t);
+        Network optimalNetwork = fnqdAlgorithm.fnqdProcess();
         long endTime=System.currentTimeMillis(); //获取结束时间
         System.out.println("程序运行时间： "+(endTime-startTime)+"ms");
     }*/

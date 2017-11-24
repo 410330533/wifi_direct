@@ -125,7 +125,12 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
             memberParametersCollection = new MemberParametersCollection(this, manager, channel);
             threadPoolExecutor.execute(memberParametersCollection);
         }
-
+        //发布服务
+        /*manager.setDnsSdResponseListeners(channel, this, this);
+        String instanceName = "HandoverParameters";
+        String serviceType = "_handover._tcp";
+        UpdateServicesThread updateServicesThread = new UpdateServicesThread(this, manager, channel, instanceName, serviceType);
+        threadPoolExecutor.execute(updateServicesThread);*/
 
     }
     /** register the BroadcastReceiver with the intent values to be matched */
@@ -594,15 +599,16 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     public void onDnsSdTxtRecordAvailable(String fullDomainName, Map<String, String> txtRecordMap, WifiP2pDevice srcDevice) {
         Log.d("DnsSdTxtRecordAvailable", fullDomainName + " " + txtRecordMap.get("power") + " " + srcDevice.deviceName);
         UpdateServicesThread.time = System.currentTimeMillis();
+        String ssid = null;
         if(groupOwnerMac.equals(srcDevice.deviceAddress)){
-            String ssid = txtRecordMap.get("ssid");
+            ssid = txtRecordMap.get("ssid");
             Log.d("candidateNetworks", "找到组主 "+ssid+ " / " +txtRecordMap.get("bandwidth"));
             int rssi = this.getRSSI(ssid);
             Network network = new Network(srcDevice, Double.valueOf(rssi), Double.valueOf(txtRecordMap.get("loadbalance")), Double.valueOf(txtRecordMap.get("bandwidth")), Double.valueOf(txtRecordMap.get("power")), true);
             candidateNetworks.put(srcDevice.deviceAddress, network);
             this.setGroupOwnerFind(true);
         }else if (!candidateNetworks.containsKey(srcDevice.deviceAddress)) {
-            String ssid = txtRecordMap.get("ssid");
+            ssid = txtRecordMap.get("ssid");
             Log.d("candidateNetworks", "候选网络增加 " + ssid+ " / " +txtRecordMap.get("bandwidth"));
             int rssi = this.getRSSI(ssid);
             Network network = new Network(srcDevice, Double.valueOf(rssi), Double.valueOf(txtRecordMap.get("loadbalance")), Double.valueOf(txtRecordMap.get("bandwidth")), Double.valueOf(txtRecordMap.get("power")), false);

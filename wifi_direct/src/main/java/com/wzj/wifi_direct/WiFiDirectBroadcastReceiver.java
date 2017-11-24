@@ -98,10 +98,10 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
             }else{
                 //当电量低时执行组内切换
                 DeviceDetailFragment detailFragment = (DeviceDetailFragment) activity.getFragmentManager().findFragmentById(R.id.frag_detail);
-                if(lowPower && activity.getIsGroupOwner()){
+                /*if(lowPower && activity.getIsGroupOwner()){
                     //组主组内切换
                     this.handoverWithinGroup();
-                }/*else if(!activity.getIsGroupOwner() && detailFragment.getMemberMap().size() != 0){
+                }else if(!activity.getIsGroupOwner() && detailFragment.getMemberMap().size() != 0){
                     this.handoverWithinGroup();
                 }*/
                 activity.resetData();

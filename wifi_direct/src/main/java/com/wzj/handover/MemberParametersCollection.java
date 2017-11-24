@@ -41,28 +41,28 @@ public class MemberParametersCollection implements Runnable {
         while (flag){
             try {
                 int rssi = wiFiDirectActivity.getRSSI(wiFiDirectActivity.getSsid());
-                rssi = -90;
+                //rssi = -90;
                 double t = 0;
                 double ct = 0;
                 int rt = 0;
-                boolean flag = false;
+                //boolean flag = false;
                 //自动成组
-                if(!wiFiDirectActivity.getIsConnected() && wiFiDirectActivity.getCandidateNetworks().size() > 0){
+                /*if(!wiFiDirectActivity.getIsConnected() && wiFiDirectActivity.getCandidateNetworks().size() > 0){
                     //当设备未加入任何组时，进行强制性切换，此时只需要在周围存在的网络中选择出较好的网络加入（不涉及到当前网络相关计算）
                     flag = true;
                     rssi = -90;
-                }
+                }*/
                 Log.d("MPCollection", ""+ rssi + " " +wiFiDirectActivity.getSsid());
-                if((wiFiDirectActivity.getIsConnected() && wiFiDirectActivity.getGroupOwnerFind()) && wiFiDirectActivity.getCandidateNetworks().size() > 1 || flag){
+                if((wiFiDirectActivity.getIsConnected() && wiFiDirectActivity.getGroupOwnerFind()) && wiFiDirectActivity.getCandidateNetworks().size() > 1 ){//||falg
                     Log.d("MPCollection", "切换判决");
-                    if(rssi < -70){
+                    if(rssi <= -70){
                         //UpdateServicesThread.period = 1000*10;
-                        if(rssi > -80 && rssi < -70){
+                        if(rssi > -80 && rssi <= -70){
                             //组员选择性切换
                             Log.d("MPCollection", "组员选择性切换");
                             rt = 20;
-                            ct = 0.1;
-                            t = 0.1;
+                            ct = 0.2;
+                            t = 0.2;
                         }else {
                             //组员强制性切换
                             Log.d("MPCollection", "组员强制性切换");

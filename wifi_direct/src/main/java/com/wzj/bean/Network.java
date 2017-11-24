@@ -21,6 +21,7 @@ public class Network {
     private Matrix mqv;
     private Matrix nqv;
     private boolean isGroupOwner = false;
+    private String name;
 
     public Network(WifiP2pDevice wifiP2pDevice, double rssi, double loadBalance, double groupOwnerPower) {
         this.wifiP2pDevice = wifiP2pDevice;
@@ -69,7 +70,7 @@ public class Network {
         return rssi;
     }
 
-    public void setRssi(float rssi) {
+    public void setRssi(double rssi) {
         this.rssi = rssi;
     }
 
@@ -159,5 +160,13 @@ public class Network {
 
     public void setGroupOwner(boolean groupOwner) {
         isGroupOwner = groupOwner;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 }
