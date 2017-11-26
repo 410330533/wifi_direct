@@ -1,7 +1,5 @@
 package com.wzj.util;
 
-import android.util.Log;
-
 import java.util.TimerTask;
 
 import static com.wzj.wifi_direct.WiFiDirectActivity.dataSize;
@@ -18,7 +16,7 @@ public class ComputeBandwidth extends TimerTask {
     public void run() {
         synchronized (dataSize){
             bandwidth = (dataSize - preDataSize)/1000000.0;
-            Log.d("带宽", "" + dataSize/1000000.0+" "+preDataSize/1000000.0+" "+bandwidth+"Mbps" );
+            //Log.d("带宽", "" + dataSize/1000000.0+" "+preDataSize/1000000.0+" "+bandwidth+"Mbps" );
             preDataSize = dataSize;
         }
     }

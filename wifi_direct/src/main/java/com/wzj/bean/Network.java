@@ -11,6 +11,7 @@ import Jama.Matrix;
 public class Network {
     private WifiP2pDevice wifiP2pDevice;
     private double rssi;
+    private String ssid;
     private double loadBalance;
     private double bandwidth = 5;
     private double groupOwnerPower;
@@ -168,5 +169,13 @@ public class Network {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getSsid() {
+        return ssid;
+    }
+
+    public void setSsid(String ssid) {
+        this.ssid = ssid;
     }
 }

@@ -27,6 +27,7 @@ public class RSSIBasedAlgorithm {
         Log.d(TAG, "开始处理-----------------  " );
         Log.d(TAG, "当前网络RSSI：" +rssi);
         Network optimalNetwork = null;
+        Network currentNetwork = null;
         double maxRssi = -100;
         for(Entry<String, Network> entry : candidateNetwork.entrySet()){
             Network network = entry.getValue();
@@ -35,10 +36,19 @@ public class RSSIBasedAlgorithm {
                     maxRssi = network.getRssi();
                     optimalNetwork = network;
                 }
+            }else {
+                currentNetwork = network;
             }
         }
         if(optimalNetwork != null){
             Log.d(TAG, "最优切换网络："+optimalNetwork.getWifiP2pDevice().deviceName+" " + maxRssi);
+            optimalNetwork.setGroupOwner(true);
+            currentNetwork.setGroupOwner(false);
+            for(Entry<String, Network> entry : candidateNetwork.entrySet()){
+                if(!entry.getValue().isGroupOwner()){
+                    candidateNetwork.remove(entry.getKey());
+                }
+            }
         }else {
             Log.d(TAG, "无最优候选网络 "+ maxRssi);
         }

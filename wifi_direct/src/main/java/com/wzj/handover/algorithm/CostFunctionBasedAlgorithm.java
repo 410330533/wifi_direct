@@ -26,6 +26,7 @@ public class CostFunctionBasedAlgorithm {
     public Network process(){
         Log.d(TAG, "开始处理------------------------");
         Network optimalNetwork = null;
+        Network currentNetwork = null;
         double cPEV = 0;
         for(Entry<String, Network> entry : candidateNetwork.entrySet()){
             Network network = entry.getValue();
@@ -36,6 +37,7 @@ public class CostFunctionBasedAlgorithm {
                     cPEV += weights[i] * factors[i];
                 }
                 Log.d(TAG, "计算组主PEV "+ cPEV);
+                currentNetwork = network;
             }
         }
         double maxPEV = 0;
@@ -58,6 +60,13 @@ public class CostFunctionBasedAlgorithm {
         }
         if(optimalNetwork != null){
             Log.d(TAG, "最优切换网络："+optimalNetwork.getWifiP2pDevice().deviceName + " " +maxPEV);
+            optimalNetwork.setGroupOwner(true);
+            currentNetwork.setGroupOwner(false);
+            for(Entry<String, Network> entry : candidateNetwork.entrySet()){
+                if(!entry.getValue().isGroupOwner()){
+                    candidateNetwork.remove(entry.getKey());
+                }
+            }
         }else {
             Log.d(TAG, "无最优候选网络 "+ maxPEV);
         }

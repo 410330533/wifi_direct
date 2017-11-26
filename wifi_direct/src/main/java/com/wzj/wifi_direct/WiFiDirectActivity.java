@@ -194,6 +194,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         Log.d(TAG, "终止线程池");
         threadPoolExecutor.shutdownNow();
         //this.disconnect();
+        this.candidateNetworks.clear();
         super.onDestroy();
 
     }
@@ -244,7 +245,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         setGroupOwnerMac("");
         setGroupOwnerFind(false);
         setSsid("");
-        candidateNetworks.clear();
+        //candidateNetworks.clear();
     }
 
     @Override
@@ -312,7 +313,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
                 .findFragmentById(R.id.frag_detail);
         WifiP2pConfig wifiP2pConfig = fragment.connect();
         if(wifiP2pConfig != null){
-            candidateNetworks.clear();
+            //candidateNetworks.clear();
             manager.connect(channel, wifiP2pConfig, new ActionListener() {
                 @Override
                 public void onSuccess() {
@@ -344,7 +345,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     public void connect(WifiP2pConfig wifiP2pConfig) {
 
         if(wifiP2pConfig != null){
-            candidateNetworks.clear();
+            //candidateNetworks.clear();
             manager.connect(channel, wifiP2pConfig, new ActionListener() {
                 @Override
                 public void onSuccess() {
@@ -600,11 +601,20 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         Log.d("DnsSdTxtRecordAvailable", fullDomainName + " " + txtRecordMap.get("power") + " " + srcDevice.deviceName);
         UpdateServicesThread.time = System.currentTimeMillis();
         String ssid = null;
+        Log.d("candidateNetworks", groupOwnerMac);
+        if(candidateNetworks.containsKey(groupOwnerMac)){
+            this.setGroupOwnerFind(true);
+            int rssi = this.getRSSI(candidateNetworks.get(groupOwnerMac).getSsid());
+            candidateNetworks.get(groupOwnerMac).setRssi(rssi);
+            candidateNetworks.get(groupOwnerMac).setGroupOwner(true);
+            Log.d("candidateNetworks", "找到组主 "+candidateNetworks.get(groupOwnerMac).getSsid());
+        }
         if(groupOwnerMac.equals(srcDevice.deviceAddress)){
             ssid = txtRecordMap.get("ssid");
             Log.d("candidateNetworks", "找到组主 "+ssid+ " / " +txtRecordMap.get("bandwidth"));
             int rssi = this.getRSSI(ssid);
             Network network = new Network(srcDevice, Double.valueOf(rssi), Double.valueOf(txtRecordMap.get("loadbalance")), Double.valueOf(txtRecordMap.get("bandwidth")), Double.valueOf(txtRecordMap.get("power")), true);
+            network.setSsid(ssid);
             candidateNetworks.put(srcDevice.deviceAddress, network);
             this.setGroupOwnerFind(true);
         }else if (!candidateNetworks.containsKey(srcDevice.deviceAddress)) {
@@ -612,11 +622,20 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
             Log.d("candidateNetworks", "候选网络增加 " + ssid+ " / " +txtRecordMap.get("bandwidth"));
             int rssi = this.getRSSI(ssid);
             Network network = new Network(srcDevice, Double.valueOf(rssi), Double.valueOf(txtRecordMap.get("loadbalance")), Double.valueOf(txtRecordMap.get("bandwidth")), Double.valueOf(txtRecordMap.get("power")), false);
+            network.setSsid(ssid);
+            candidateNetworks.put(srcDevice.deviceAddress, network);
+        }else if(candidateNetworks.containsKey(srcDevice.deviceAddress)){
+            ssid = txtRecordMap.get("ssid");
+            Log.d("candidateNetworks", "候选网络更新 " + ssid+ " / " +txtRecordMap.get("bandwidth"));
+            int rssi = this.getRSSI(ssid);
+            Network network = new Network(srcDevice, Double.valueOf(rssi), Double.valueOf(txtRecordMap.get("loadbalance")), Double.valueOf(txtRecordMap.get("bandwidth")), Double.valueOf(txtRecordMap.get("power")), false);
+            network.setSsid(ssid);
             candidateNetworks.put(srcDevice.deviceAddress, network);
         }
         for (Entry<String, Network> entry : candidateNetworks.entrySet()) {
             Log.d("candidateNetworks", entry.getKey() + " " +entry.getValue().getWifiP2pDevice().deviceName+" "+entry.getValue().getRssi());
         }
+        Log.d("candidateNetworks",""+candidateNetworks.size());
 
 
     }

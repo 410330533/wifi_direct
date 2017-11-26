@@ -59,7 +59,7 @@ public class UpdateServicesThread implements Runnable, WifiP2pManager.DnsSdServi
                             Log.d(TAG, "service清理成功！");
                             txtRecordMap.put("ssid", "" + wiFiDirectActivity.getSsid());
                             txtRecordMap.put("loadbalance", "" + wiFiDirectActivity.getLoadBalance(15));
-                            txtRecordMap.put("bandwidth", "" + wiFiDirectActivity.getBandwidth(20));
+                            txtRecordMap.put("bandwidth", "" + 0.7);
                             Log.d("带宽这里",""+wiFiDirectActivity.getBandwidth(20));
                             txtRecordMap.put("power", "" + wiFiDirectActivity.getPower());
                             WifiP2pDnsSdServiceInfo wifiP2pDnsSdServiceInfo = WifiP2pDnsSdServiceInfo.newInstance(instanceName, serviceType, txtRecordMap);

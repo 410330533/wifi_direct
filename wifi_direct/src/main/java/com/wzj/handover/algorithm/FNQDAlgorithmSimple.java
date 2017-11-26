@@ -103,9 +103,9 @@ public class FNQDAlgorithmSimple implements Runnable{
             if(entry.getValue().isGroupOwner()){
                 //找到当前网络
                 currentNetwrok = entry.getValue();
-                candidateNetwork.remove(entry.getKey());
+                //candidateNetwork.remove(entry.getKey());
                 cPEV = currentNetwrok.getPev();
-                Log.d(TAG, "找到当前网络："+currentNetwrok.getWifiP2pDevice().deviceName);
+                Log.d(TAG, "找到当前网络："+currentNetwrok.getWifiP2pDevice().deviceName+"/"+cPEV);
             }
         }
         /*for(int i = 0;i<candidateNetwork.size();i++){
@@ -153,11 +153,19 @@ public class FNQDAlgorithmSimple implements Runnable{
             }
         }*/
         if(null != optimalNetwork){
-            Log.d(TAG, "最优切换网络："+ optimalNetwork.getWifiP2pDevice().deviceName);
+            Log.d(TAG, "最优切换网络："+ optimalNetwork.getWifiP2pDevice().deviceName+"/"+optimalNetwork.getPev());
+            optimalNetwork.setGroupOwner(true);
+            currentNetwrok.setGroupOwner(false);
+            for(Entry<String, Network> entry : candidateNetwork.entrySet()){
+                if(!entry.getValue().isGroupOwner()){
+                    candidateNetwork.remove(entry.getKey());
+                }
+            }
         }else {
             Log.d(TAG, "无最优切换网络");
         }
-        candidateNetwork.clear();
+
+
         Log.d(TAG, "FNQD处理完成----------------------------------------------");
         return optimalNetwork;
     }

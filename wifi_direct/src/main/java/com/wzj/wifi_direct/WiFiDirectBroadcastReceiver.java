@@ -88,7 +88,7 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
             System.out.println("这里这里："+networkInfo.isConnected());
             if(networkInfo.isConnected()){
                 //设备已连接;查找组主IP
-                activity.getCandidateNetworks().clear();
+                //activity.getCandidateNetworks().clear();
                 DeviceDetailFragment fragment = (DeviceDetailFragment) activity.
                         getFragmentManager().findFragmentById(R.id.frag_detail);
                 //请求连接信息
