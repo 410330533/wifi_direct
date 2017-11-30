@@ -1,17 +1,16 @@
 package com.wzj.handover;
 
+import android.net.wifi.WpsInfo;
 import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pManager;
-import android.net.wifi.p2p.WifiP2pManager.ActionListener;
 import android.net.wifi.p2p.WifiP2pManager.Channel;
 import android.util.Log;
 
 import com.wzj.bean.Network;
+import com.wzj.handover.algorithm.CostFunctionBasedAlgorithm;
 import com.wzj.handover.algorithm.FNQDAlgorithmSimple;
+import com.wzj.handover.algorithm.RSSIBasedAlgorithm;
 import com.wzj.wifi_direct.WiFiDirectActivity;
-
-import java.util.Timer;
-import java.util.TimerTask;
 
 /**
  * Created by WZJ on 2017/11/13.
@@ -53,9 +52,9 @@ public class MemberParametersCollection implements Runnable {
                 Log.d("MPCollection", ""+ rssi + " " +wiFiDirectActivity.getSsid());
                 if((wiFiDirectActivity.getIsConnected() && wiFiDirectActivity.getGroupOwnerFind()) && wiFiDirectActivity.getCandidateNetworks().size() > 1 ){//||falg
                     Log.d("MPCollection", "切换判决");
-                    if(rssi <= -35){
+                    if(rssi <= -45){
                         //UpdateServicesThread.period = 1000*10;
-                        if(rssi > -45 && rssi <= -35){
+                        if(rssi > -55){
                             //组员选择性切换
                             Log.d("MPCollection", "组员选择性切换");
                             rt = 20;
@@ -77,10 +76,10 @@ public class MemberParametersCollection implements Runnable {
                         //PEV阈值
 
                         //Network currentNetwork = new Network(null, wiFiDirectActivity.getRSSI("^DIRECT-[a-zA-Z 0-9]+-[a-zA-Z _0-9]+"), wiFiDirectActivity.getLoadBalance(100), wiFiDirectActivity.getPower());
-                        /*RSSIBasedAlgorithm rssiBasedAlgorithm = new RSSIBasedAlgorithm(wiFiDirectActivity.getCandidateNetworks(), wiFiDirectActivity.getRSSI(wiFiDirectActivity.getSsid()), rt);
+                        RSSIBasedAlgorithm rssiBasedAlgorithm = new RSSIBasedAlgorithm(wiFiDirectActivity.getCandidateNetworks(), wiFiDirectActivity.getRSSI(wiFiDirectActivity.getSsid()), rt);
                         rssiBasedAlgorithm.process();
                         CostFunctionBasedAlgorithm costFunctionBasedAlgorithm = new CostFunctionBasedAlgorithm(wiFiDirectActivity.getCandidateNetworks(), ct, weightsC);
-                        costFunctionBasedAlgorithm.process();*/
+                        costFunctionBasedAlgorithm.process();
                         FNQDAlgorithmSimple fnqdAlgorithm = new FNQDAlgorithmSimple(wiFiDirectActivity.getCandidateNetworks(), mParameters, weights, t);
                         final Network optimalNetwork = fnqdAlgorithm.fnqdProcess();
                         //建立连接
@@ -89,9 +88,22 @@ public class MemberParametersCollection implements Runnable {
                             //UpdateServicesThread.period = 1000*60;
                             if(wiFiDirectActivity.getIsConnected()){
                                 wiFiDirectActivity.disconnect();
-                                Thread.sleep(1000);
                             }
-                            wifiP2pManager.discoverPeers(channel, new ActionListener() {
+                            config.deviceAddress = optimalNetwork.getWifiP2pDevice().deviceAddress;
+                            config.wps.setup = WpsInfo.PBC;
+                            wiFiDirectActivity.setWifiP2pConfig(config);
+                            wiFiDirectActivity.setAutoConnect(true);
+                            /*Timer timer = new Timer();
+                            timer.schedule(new TimerTask() {
+                                @Override
+                                public void run() {
+                                    config.deviceAddress = optimalNetwork.getWifiP2pDevice().deviceAddress;
+                                    config.wps.setup = WpsInfo.PBC;
+                                    config.groupOwnerIntent = 0;
+                                    wiFiDirectActivity.connect(config);
+                                }
+                            },5000);*/
+                            /*wifiP2pManager.discoverPeers(channel, new ActionListener() {
                                 @Override
                                 public void onSuccess() {
                                     Timer timer = new Timer();
@@ -99,6 +111,8 @@ public class MemberParametersCollection implements Runnable {
                                         @Override
                                         public void run() {
                                             config.deviceAddress = optimalNetwork.getWifiP2pDevice().deviceAddress;
+                                            config.wps.setup = WpsInfo.PBC;
+                                            config.groupOwnerIntent = 0;
                                             wiFiDirectActivity.connect(config);
                                         }
                                     },5000);
@@ -110,7 +124,7 @@ public class MemberParametersCollection implements Runnable {
                                 public void onFailure(int reason) {
 
                                 }
-                            });
+                            });*/
                         }
                     }
                 }

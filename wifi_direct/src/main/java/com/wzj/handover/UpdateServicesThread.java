@@ -20,7 +20,7 @@ import java.util.Map;
 public class UpdateServicesThread implements Runnable, WifiP2pManager.DnsSdServiceResponseListener, WifiP2pManager.DnsSdTxtRecordListener{
     public static final String  TAG = "UpdateServicesThread";
     public static final long TIME_OUT = 1000*60*20;
-    public static long period = 1000*15;
+    public static long period = 1000*10;
     public static long time = System.currentTimeMillis();
     private WiFiDirectActivity wiFiDirectActivity;
     private WifiP2pManager wifiP2pManager;
@@ -52,16 +52,17 @@ public class UpdateServicesThread implements Runnable, WifiP2pManager.DnsSdServi
                     wiFiDirectActivity.getCandidateNetworks().clear();
                     time = System.currentTimeMillis();
                 }*/
-                if(wiFiDirectActivity.getIsGroupOwner()){
+                if(wiFiDirectActivity.isMemberServiceDiscovery()){
                     wifiP2pManager.clearLocalServices(channel, new ActionListener() {
                         @Override
                         public void onSuccess() {
                             Log.d(TAG, "service清理成功！");
                             txtRecordMap.put("ssid", "" + wiFiDirectActivity.getSsid());
-                            txtRecordMap.put("loadbalance", "" + wiFiDirectActivity.getLoadBalance(15));
-                            txtRecordMap.put("bandwidth", "" + 0.7);
+                            txtRecordMap.put("loadbalance", "" + 1/15.0);
+                            txtRecordMap.put("bandwidth", "" + 1);
                             Log.d("带宽这里",""+wiFiDirectActivity.getBandwidth(20));
                             txtRecordMap.put("power", "" + wiFiDirectActivity.getPower());
+                            Log.d("电量",""+wiFiDirectActivity.getPower());
                             WifiP2pDnsSdServiceInfo wifiP2pDnsSdServiceInfo = WifiP2pDnsSdServiceInfo.newInstance(instanceName, serviceType, txtRecordMap);
                             wifiP2pManager.addLocalService(channel, wifiP2pDnsSdServiceInfo, new ActionListener() {
                                 @Override

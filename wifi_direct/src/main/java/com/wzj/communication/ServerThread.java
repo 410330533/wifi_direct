@@ -52,7 +52,7 @@ public class ServerThread implements Runnable {
     private static Map<String, Map<String, Member>> memberMap;
     private WifiP2pDevice myDevice;
     public static Timer timer;
-    private long bradcastPeriod = 1000*60;
+    private long broadcastPeriod = 1000*60;
 
     public ServerThread(Context context, Map<String, Map<String, Member>> memberMap, Handler mHandler, String type, Map<String, Socket> tcpConnections, WifiP2pDevice myDevice) {
         this.context = context;
@@ -98,7 +98,7 @@ public class ServerThread implements Runnable {
                             UDPBroadcast udpBroadcastWrite = new UDPBroadcast(0, "1", member);
                             new Thread(udpBroadcastWrite).start();
                         }
-                    }, bradcastPeriod, bradcastPeriod);
+                    }, broadcastPeriod, broadcastPeriod);
                 }
             }
             Log.d(WiFiDirectActivity.TAG, "ServerThread：线程启动");

@@ -42,11 +42,11 @@ public class RSSIBasedAlgorithm {
         }
         if(optimalNetwork != null){
             Log.d(TAG, "最优切换网络："+optimalNetwork.getWifiP2pDevice().deviceName+" " + maxRssi);
-            optimalNetwork.setGroupOwner(true);
-            currentNetwork.setGroupOwner(false);
+            //optimalNetwork.setGroupOwner(true);
+            //currentNetwork.setGroupOwner(false);
             for(Entry<String, Network> entry : candidateNetwork.entrySet()){
                 if(!entry.getValue().isGroupOwner()){
-                    candidateNetwork.remove(entry.getKey());
+                    //candidateNetwork.remove(entry.getKey());
                 }
             }
         }else {

@@ -3,7 +3,6 @@ package com.wzj.wifi_direct;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.ServiceConnection;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.net.wifi.p2p.WifiP2pConfig;
@@ -24,15 +23,17 @@ import android.widget.Toast;
 
 import com.wzj.bean.Member;
 import com.wzj.bean.Network;
+import com.wzj.handover.GroupOwnerParametersCollection;
 import com.wzj.handover.MemberParametersCollection;
 import com.wzj.handover.UpdateServicesThread;
-import com.wzj.service.SocketService;
 import com.wzj.wifi_direct.DeviceListFragment.DeviceActionListener;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -57,6 +58,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     private boolean isWifiP2pEnabled = false;
     private boolean retryChannel = false;
     private boolean isGroupOwner = false;
+    private boolean memberServiceDiscovery = false;
     private boolean isConnected = false;
     private boolean groupOwnerFind = false;
     private String groupOwnerMac = "";
@@ -70,11 +72,12 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     private static final int CPU_COUNT = Runtime.getRuntime().availableProcessors();
     public static ThreadPoolExecutor threadPoolExecutor;
     private Map<String, Network> candidateNetworks = new ConcurrentHashMap<>();
-    private static MemberParametersCollection memberParametersCollection;
+    private MemberParametersCollection memberParametersCollection;
+    private GroupOwnerParametersCollection groupOwnerParametersCollection;
     public static Long dataSize = Long.valueOf(0);
     private Map<String, Member> lastMembers = new HashMap<>();
-    private SocketService socketService;
-    private ServiceConnection serviceConnection;
+    private boolean autoConnect = false;
+    private WifiP2pConfig wifiP2pConfig = null;
 
     public boolean getGroupOwnerFind() {
         return groupOwnerFind;
@@ -107,7 +110,11 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         // add necessary intent values to be matched.
-
+        if(savedInstanceState !=null && null != savedInstanceState.getString("isGroupOwner")){
+            Log.d(TAG,""+isGroupOwner);
+            isGroupOwner = Boolean.valueOf(savedInstanceState.getString("isGroupOwner"));
+            Log.d(TAG,""+isGroupOwner);
+        }
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION);
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
@@ -121,10 +128,11 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         if(null == threadPoolExecutor || threadPoolExecutor.isTerminated()){
             threadPoolExecutor = new ThreadPoolExecutor(CPU_COUNT + 1, CPU_COUNT*2 + 1, 1, TimeUnit.SECONDS, new LinkedBlockingDeque<Runnable>(128));
         }
-        if(!isGroupOwner){
+        Log.d("是否为组主",""+isGroupOwner);
+        /*if(!isGroupOwner){
             memberParametersCollection = new MemberParametersCollection(this, manager, channel);
             threadPoolExecutor.execute(memberParametersCollection);
-        }
+        }*/
         //发布服务
         /*manager.setDnsSdResponseListeners(channel, this, this);
         String instanceName = "HandoverParameters";
@@ -177,7 +185,14 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         */
         //this.removeServices();
         Log.d("WiFiP2pService", "----------------------！");
+        /*if(isGroupOwner){
+            if(groupOwnerParametersCollection == null && getPower() < 0.25){
+                Log.d(TAG, "启动GroupOwnerParametersCollection");
+                groupOwnerParametersCollection = new GroupOwnerParametersCollection(this, batteryReceiver);
+                threadPoolExecutor.execute(groupOwnerParametersCollection);
+            }
 
+        }*/
     }
 
     @Override
@@ -193,37 +208,27 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         this.removeServices();
         Log.d(TAG, "终止线程池");
         threadPoolExecutor.shutdownNow();
+        threadPoolExecutor = null;
+        if(memberParametersCollection != null){
+            memberParametersCollection.setFlag(false);
+            memberParametersCollection = null;
+        }
+        if(groupOwnerParametersCollection != null){
+            groupOwnerParametersCollection.setFlag(false);
+            groupOwnerParametersCollection = null;
+        }
         //this.disconnect();
         this.candidateNetworks.clear();
         super.onDestroy();
 
     }
 
-    /*@Override
+    @Override
     protected void onSaveInstanceState(Bundle outState) {
+        Log.d("onSaveInstanceState","保存状态");
+        outState.putString("isGroupOwner", ""+isGroupOwner);
         super.onSaveInstanceState(outState);
-        if(socketService == null){
-            serviceConnection = new ServiceConnection() {
-                @Override
-                public void onServiceConnected(ComponentName name, IBinder service) {
-                    socketService = ((SocketService.MBinder)service).getService();
-                    DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment)getFragmentManager().findFragmentById(R.id.frag_detail);
-                    socketService.setTcpConnections(deviceDetailFragment.getTcpConnections());
-                    System.out.println("service连接上了！！！！！！！！！");
-                }
-
-                @Override
-                public void onServiceDisconnected(ComponentName name) {
-                    socketService = null;
-                }
-            };
-        }
-        Intent serviceIntent = new Intent(this, SocketService.class);
-        this.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
-        DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment)getFragmentManager().findFragmentById(R.id.frag_detail);
-        Gson gson = new Gson();
-        outState.putString("memberMap", gson.toJson(deviceDetailFragment.getMemberMap()));
-    }*/
+    }
 
     /**
      * Remove all peers and clear all fields. This is called on
@@ -244,8 +249,10 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         setIsConnected(false);
         setGroupOwnerMac("");
         setGroupOwnerFind(false);
+        setMemberServiceDiscovery(false);
         setSsid("");
         //candidateNetworks.clear();
+
     }
 
     @Override
@@ -324,25 +331,13 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
                 public void onFailure(int reason) {
                     Toast.makeText(WiFiDirectActivity.this, "Connect failed. Retry."+reason,
                             Toast.LENGTH_SHORT).show();
-                    /*manager.cancelConnect(channel, new ActionListener() {
-                        @Override
-                        public void onSuccess() {
-                            Toast.makeText(WiFiDirectActivity.this, "Aborting connection",
-                                    Toast.LENGTH_SHORT).show();
-                        }
-
-                        @Override
-                        public void onFailure(int reason) {
-                            Toast.makeText(WiFiDirectActivity.this, "Connect abort request failed, Reason Code: "
-                                    +reason, Toast.LENGTH_SHORT).show();
-                        }
-                    });*/
+                    cancel();
                 }
             });
         }
 
     }
-    public void connect(WifiP2pConfig wifiP2pConfig) {
+    public void connect(final WifiP2pConfig wifiP2pConfig) {
 
         if(wifiP2pConfig != null){
             //candidateNetworks.clear();
@@ -356,6 +351,27 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
                 public void onFailure(int reason) {
                     Toast.makeText(WiFiDirectActivity.this, "Connect failed. Retry."+reason,
                             Toast.LENGTH_SHORT).show();
+                    cancel();
+                    /*Timer timer = new Timer();
+                    timer.schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            manager.connect(channel, wifiP2pConfig, new ActionListener() {
+                                @Override
+                                public void onSuccess() {
+                                    Toast.makeText(WiFiDirectActivity.this, "Connect again.",
+                                            Toast.LENGTH_SHORT).show();
+                                }
+
+                                @Override
+                                public void onFailure(int reason) {
+                                    Toast.makeText(WiFiDirectActivity.this, "Second connect failed."+reason,
+                                            Toast.LENGTH_SHORT).show();
+                                }
+                            });
+                        }
+                    }, 5000);*/
+
                 /*manager.cancelConnect(channel, new ActionListener() {
                     @Override
                     public void onSuccess() {
@@ -404,7 +420,8 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
                     Toast.LENGTH_SHORT).show();
         }
     }
-    public  void cancel(){
+    public void cancel(){
+        Log.d(TAG,"取消连接！");
         manager.cancelConnect(channel, new ActionListener() {
             @Override
             public void onSuccess() {
@@ -435,6 +452,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
             //已经连接上，建立了组 removeGroup()
             if(fragment.getDevice() == null || fragment.getDevice().status == WifiP2pDevice.CONNECTED){
                 removeGroup();
+
                 //未建立组，处于协商阶段 cancelConnect()
             }else if (fragment.getDevice().status == WifiP2pDevice.INVITED){
                 manager.cancelConnect(channel, new ActionListener() {
@@ -481,7 +499,17 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
 
             @Override
             public void onFailure(int reason) {
-                Toast.makeText(WiFiDirectActivity.this, "Failed to create group!", Toast.LENGTH_SHORT).show();
+
+                if(!getIsConnected()){
+                    Toast.makeText(WiFiDirectActivity.this, "Failed to create group!"+reason, Toast.LENGTH_SHORT).show();
+                    Timer timer = new Timer();
+                    timer.schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            createGroup();
+                        }
+                    }, 3000);
+                }
             }
         });
     }
@@ -512,8 +540,10 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     public double getBandwidth(float maxBandwidth){
         double availableBandwidth = 0;
         DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment)getFragmentManager().findFragmentById(R.id.frag_detail);
-        Double bandwidth = deviceDetailFragment.getComputeBandwidth().getBandwidth();
-        availableBandwidth = (maxBandwidth - bandwidth)/maxBandwidth;
+        if(deviceDetailFragment.getComputeBandwidth() != null){
+            Double bandwidth = deviceDetailFragment.getComputeBandwidth().getBandwidth();
+            availableBandwidth = (maxBandwidth - bandwidth)/maxBandwidth;
+        }
         return availableBandwidth;
     }
 
@@ -607,7 +637,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
             int rssi = this.getRSSI(candidateNetworks.get(groupOwnerMac).getSsid());
             candidateNetworks.get(groupOwnerMac).setRssi(rssi);
             candidateNetworks.get(groupOwnerMac).setGroupOwner(true);
-            Log.d("candidateNetworks", "找到组主 "+candidateNetworks.get(groupOwnerMac).getSsid());
+            Log.d("candidateNetworks", "组主已经在candidateNetworks中 "+candidateNetworks.get(groupOwnerMac).getSsid());
         }
         if(groupOwnerMac.equals(srcDevice.deviceAddress)){
             ssid = txtRecordMap.get("ssid");
@@ -709,5 +739,39 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         this.lastMembers = lastMembers;
     }
 
+    public boolean isAutoConnect() {
+        return autoConnect;
+    }
 
+    public void setAutoConnect(boolean autoConnect) {
+        this.autoConnect = autoConnect;
+    }
+
+    public WifiP2pConfig getWifiP2pConfig() {
+        return wifiP2pConfig;
+    }
+
+    public void setWifiP2pConfig(WifiP2pConfig wifiP2pConfig) {
+        this.wifiP2pConfig = wifiP2pConfig;
+    }
+
+    public GroupOwnerParametersCollection getGroupOwnerParametersCollection() {
+        return groupOwnerParametersCollection;
+    }
+
+    public void setGroupOwnerParametersCollection(GroupOwnerParametersCollection groupOwnerParametersCollection) {
+        this.groupOwnerParametersCollection = groupOwnerParametersCollection;
+    }
+
+    public BatteryReceiver getBatteryReceiver() {
+        return batteryReceiver;
+    }
+
+    public boolean isMemberServiceDiscovery() {
+        return memberServiceDiscovery;
+    }
+
+    public void setMemberServiceDiscovery(boolean memberServiceDiscovery) {
+        this.memberServiceDiscovery = memberServiceDiscovery;
+    }
 }

@@ -6,6 +6,7 @@ import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnCancelListener;
+import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pDeviceList;
 import android.net.wifi.p2p.WifiP2pManager;
@@ -22,7 +23,11 @@ import android.widget.ListView;
 import android.widget.TextView;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Random;
+import java.util.Timer;
+import java.util.TimerTask;
 
 /**
  * Created by wzj on 2017/1/17.
@@ -37,6 +42,15 @@ public class DeviceListFragment extends ListFragment implements WifiP2pManager.P
     ProgressDialog progressDialog = null;
     View mContentView = null;
     private WifiP2pDevice device;
+    private Timer autoConnectTimer;
+
+    public Timer getAutoConnectTimer() {
+        return autoConnectTimer;
+    }
+
+    public void setAutoConnectTimer(Timer autoConnectTimer) {
+        this.autoConnectTimer = autoConnectTimer;
+    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -93,7 +107,7 @@ public class DeviceListFragment extends ListFragment implements WifiP2pManager.P
                 status = "Unknown";
                 break;
         }
-        Log.d(WiFiDirectActivity.TAG, "Peer status :"+status);
+        //Log.d(WiFiDirectActivity.TAG, "Peer status :"+status);
         return status;
     }
     /**
@@ -188,11 +202,46 @@ public class DeviceListFragment extends ListFragment implements WifiP2pManager.P
         }
         peers.clear();
         peers.addAll(peerList.getDeviceList());
-        System.out.println("凄凄切切 "+peerList.getDeviceList().size());
+        Collection<WifiP2pDevice> p2pDevices = peerList.getDeviceList();
+        if(((WiFiDirectActivity)getActivity()).isAutoConnect()){
+            final WifiP2pConfig wifiP2pConfig = ((WiFiDirectActivity)getActivity()).getWifiP2pConfig();
+            for (WifiP2pDevice wifiP2pDevice : p2pDevices){
+                if(wifiP2pDevice.deviceAddress.equals(wifiP2pConfig.deviceAddress)){
+                    ((WiFiDirectActivity)getActivity()).connect(wifiP2pConfig);
+                    Log.d("AutoConnect", "自动连接！");
+                    ((WiFiDirectActivity)getActivity()).setAutoConnect(false);
+                    Random random = new Random();
+                    int ran = random.nextInt(6);
+                    autoConnectTimer = new Timer();
+                    autoConnectTimer.schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            if(!((WiFiDirectActivity)getActivity()).getIsConnected()){
+                                ((WiFiDirectActivity)getActivity()).connect(wifiP2pConfig);
+                                Log.d("AutoConnect", "再次自动连接！");
+                            }
+                        }
+                    },5000,3000+1000*ran);
+
+                }
+            }
+        }
+
+        ((WiFiPeerListAdapter)getListAdapter()).notifyDataSetChanged();
+
+        if((((WiFiDirectActivity)getActivity()).getReceiver()).isConnected()){
+            for (WifiP2pDevice wifiP2pDevice : p2pDevices){
+                if(wifiP2pDevice.status == 0){
+                    ((WiFiDirectActivity)getActivity()).setGroupOwnerMac(wifiP2pDevice.deviceAddress);
+                    break;
+                }
+            }
+        }
+        Log.d("onPeersAvailable ",""+peerList.getDeviceList().size());
         //notifyDataSetChanged方法通过一个外部的方法控制
         //如果适配器的内容改变时需要强制调用getView来刷新每个Item的内容。
-        ((WiFiPeerListAdapter)getListAdapter()).notifyDataSetChanged();
-        if(((WiFiDirectBroadcastReceiver)((WiFiDirectActivity)getActivity()).getReceiver()).isConnected()
+
+        if((((WiFiDirectActivity)getActivity()).getReceiver()).isConnected()
                 && peers.size() == 0){
             this.clearPeers();
         }else if(peers.size() == 0){
@@ -225,6 +274,7 @@ public class DeviceListFragment extends ListFragment implements WifiP2pManager.P
      * An interface-callback for the activity to listen to fragment interaction
      * events.
      */
+
     public interface DeviceActionListener {
 
         void showDetails(WifiP2pDevice device, View view);

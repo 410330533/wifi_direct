@@ -36,11 +36,13 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.wzj.bean.ChatModel;
 import com.wzj.bean.Member;
+import com.wzj.bean.Network;
 import com.wzj.chat.ChatActivity;
 import com.wzj.communication.ClientThread;
 import com.wzj.communication.MemberServerThread;
 import com.wzj.communication.ServerThread;
 import com.wzj.communication.UDPBroadcast;
+import com.wzj.handover.GroupOwnerParametersCollection;
 import com.wzj.service.SocketService;
 import com.wzj.util.ComputeBandwidth;
 
@@ -54,7 +56,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Timer;
+import java.util.TimerTask;
 
 
 /**
@@ -72,6 +76,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
     private View mContentView = null;
     private WifiP2pDevice device;
     private WifiP2pInfo info;
+    public static final String TAG = "DeviceDetailFragment";
     ProgressDialog progressDialog = null;
     public static final int PORT = 8990;
     public static final int MS_PORT = 8999;
@@ -126,11 +131,13 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
 
 
     private void mapToList(Map<String, Map<String, Member>> memberMap){
+        Log.d("mapToList", "转换List "+memberMap.size());
         List<Member> temp =new ArrayList<>();
         for(Map.Entry<String, Map<String, Member>> map : memberMap.entrySet()){
             if(!map.getKey().equals(myDevice.deviceAddress)) {
                 for(Map.Entry<String, Member> mapE : map.getValue().entrySet()){
                     temp.add(mapE.getValue());
+                    Log.d("mapToList", "转换List "+temp.size());
                 }
             }
         }
@@ -385,6 +392,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                         }
                         break;
                     case 6:
+                        Log.d("handler MemberList: ", ""+memberList.size());
                         mapToList(memberMap);
                         Log.d("handler MemberList: ", ""+memberList.size());
                         ((MemberListAdapter)getListAdapter()).notifyDataSetChanged();
@@ -511,7 +519,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
         this.info = info;
         this.getView().setVisibility(View.VISIBLE);
         TextView view = (TextView)mContentView.findViewById(R.id.group_ip);
-        view.setText("Group Owner IP -" + info.groupOwnerAddress.getHostAddress());
+        //view.setText("Group Owner IP -" + info.groupOwnerAddress.getHostAddress());
 
         // After the group negotiation, we assign the group owner as the file
         // server. The file server is single threaded, single connection server
@@ -521,7 +529,14 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                     serverReadThread =new ServerThread(activity, memberMap, mHandler, "read", tcpConnections, myDevice);
                     new Thread(serverReadThread).start();
             }
-
+            //清理candidateNetworks,设置所有Network的isGroupOwner为false
+            Map<String, Network> candidateNetworks = activity.getCandidateNetworks();
+            if(candidateNetworks != null && candidateNetworks.size() != 0){
+                Log.d("清理candidateNetworks", "设置所有Network的isGroupOwner为false");
+                for(Entry<String ,Network> entry : candidateNetworks.entrySet()){
+                    entry.getValue().setGroupOwner(false);
+                }
+            }
         }else if(info.groupFormed){
             if(!tcpConnections.containsKey(GO_ADDRESS)){
                 ClientThread clientThread = new ClientThread(activity, mHandler, GO_ADDRESS, PORT, myDevice, tcpConnections);
@@ -558,6 +573,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
         }
         ((WiFiDirectActivity)getActivity()).setSsid(ssid);
         ((WiFiDirectActivity)getActivity()).setIsGroupOwner(group.isGroupOwner());
+        ((WiFiDirectActivity)getActivity()).setMemberServiceDiscovery(group.isGroupOwner());
         ((WiFiDirectActivity)getActivity()).setGroupSize(group.getClientList().size());
         if(group.isGroupOwner()){
 
@@ -568,9 +584,24 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                 computeBandwidth = new ComputeBandwidth();
                 timer.scheduleAtFixedRate(computeBandwidth, 1000, 5000);
             }
+            //关闭组员监听线程
             if(activity.getMemberParametersCollection() != null){
                 activity.getMemberParametersCollection().setFlag(false);
                 activity.setMemberParametersCollection(null);
+                Log.d(TAG, "关闭组员监听线程！！");
+            }
+            //开启组主监听线程
+            if(activity.getGroupOwnerParametersCollection() == null && activity.getPower() < 0.25){
+                final GroupOwnerParametersCollection groupOwnerParametersCollection = new GroupOwnerParametersCollection(activity, activity.getBatteryReceiver());
+                activity.setGroupOwnerParametersCollection(groupOwnerParametersCollection);
+                Timer timer = new Timer();
+                timer.schedule(new TimerTask() {
+                    @Override
+                    public void run() {
+                        WiFiDirectActivity.threadPoolExecutor.execute(groupOwnerParametersCollection);
+                        Log.d(TAG, "开启组主监听线程！！");
+                    }
+                }, 3000);
             }
         }
         /*mapToList(memberMap);
@@ -703,6 +734,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
     }
 
     public void disconnect(){
+        Log.d("DeviceDetailFrag", "断开连接");
         if(info != null){
             if(info.isGroupOwner){
                 //GO断开连接时应关闭ServerSocket

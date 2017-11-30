@@ -5,6 +5,11 @@ import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
 
+import com.wzj.handover.GroupOwnerParametersCollection;
+
+import java.util.Timer;
+import java.util.TimerTask;
+
 /**
  * Created by WZJ on 2017/11/8.
  */
@@ -12,45 +17,29 @@ import android.util.Log;
 public class BatteryReceiver extends BroadcastReceiver {
     public static final String TAG = "BatteryReceiver";
     private WiFiDirectActivity wiFiDirectActivity;
-    public static float power ;
-
+    public static float power = 1;
     public BatteryReceiver(WiFiDirectActivity wiFiDirectActivity) {
         this.wiFiDirectActivity = wiFiDirectActivity;
     }
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        Log.d(TAG, " " + wiFiDirectActivity.getIsGroupOwner());
         power = intent.getExtras().getInt("level")/100.0f;
-        if (wiFiDirectActivity.getIsGroupOwner()){
-            //power = 0.14f;
-            Log.d(TAG, ""+ power +" " + wiFiDirectActivity.getIsGroupOwner());
-            if(power <= 0.2){
-                if(power <= 0.2 && power > 0.1){
-                    if(wiFiDirectActivity.getGroupSize() == 0){
-                        Log.d(TAG, ""+"组主选择性切换");
-                        //组主选择性切换
-                    }else {
-                        //组内切换
-                        Log.d(TAG, ""+"组内切换");
-                        WiFiDirectBroadcastReceiver wiFiDirectBroadcastReceiver = wiFiDirectActivity.getReceiver();
-                        wiFiDirectBroadcastReceiver.setLowPower(true);
-                        wiFiDirectActivity.disconnect();
+        power = (float)(Math.round(power*100))/100;
+        if(power < 0.25){
+            if(wiFiDirectActivity.getIsGroupOwner() && wiFiDirectActivity.getGroupOwnerParametersCollection() == null){
+                Log.d(TAG, "启动GroupOwnerParametersCollection");
+                final GroupOwnerParametersCollection groupOwnerParametersCollection = new GroupOwnerParametersCollection(wiFiDirectActivity, this);
+                final Timer timer = new Timer();
+                timer.schedule(new TimerTask() {
+                    @Override
+                    public void run() {
+                        WiFiDirectActivity.threadPoolExecutor.execute(groupOwnerParametersCollection);
                     }
-
-                }else {
-                    if(wiFiDirectActivity.getGroupSize() == 0){
-                        //组主强制性切换
-                        Log.d(TAG, ""+"组主强制性切换");
-                    }else {
-                        //组内切换
-                        Log.d(TAG, ""+"组内切换");
-                    }
-
-                }
+                }, 1000*5);
             }
-        }
 
+        }
         //Log.d(TAG, ""+power);
     }
 
