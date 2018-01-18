@@ -30,6 +30,7 @@ import java.util.Map;
  * Created by wzj on 2017/4/24.
  */
 
+//用于两个组员间通信,只使用了MSRead方式，MSWrite方法目前未使用，所有写的操作都通过ClientThread中相关的写方法来实现
 public class MemberServerThread implements Runnable {
     private Context context;
     private static ServerSocket serverSocket;
@@ -117,17 +118,6 @@ public class MemberServerThread implements Runnable {
                     if(flag == StringToLong.transfer("Messagem")){
                         //文本消息
                         String message = "";
-                        /*long totalLength = inputStream.readLong();
-                        byte buf[] = new byte[4096];
-                        int len = 0;
-                        int msg_leng = 0;
-                        while(msg_leng < totalLength){
-                            len = inputStream.read(buf);
-                            String str = new String(buf, 0, len);
-                            message += str;
-                            msg_leng += len;
-                        }
-                        System.out.println("----Gson: "+ message);*/
                         message = inputStream.readUTF();
                         Message msg = new Message();
                         msg.what = 7;
@@ -181,7 +171,6 @@ public class MemberServerThread implements Runnable {
                     Log.e(WiFiDirectActivity.TAG, "MSRead 154");
                     e.printStackTrace();
                 }
-                //close();
             }
         }
     }
@@ -199,7 +188,6 @@ public class MemberServerThread implements Runnable {
                 File file = new File(GetPath.getPath(context, uri));
                 stream.writeLong(file.length());
                 System.out.println("MemberServerWrite:服务端写入开始 "+socket.getInetAddress().getHostAddress() + file.length());
-                //Demo代码不完整
                 byte buf[] = new byte[1024];
                 int length;
                 while ((length = in.read(buf)) != -1) {

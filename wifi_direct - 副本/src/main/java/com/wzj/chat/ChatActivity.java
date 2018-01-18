@@ -43,7 +43,7 @@ public class ChatActivity extends AppCompatActivity {
     private TextView tvSend;
     private String content = "";
     private SocketService socketService;
-    private Socket socket;
+    private Socket socket;    //传入到该Activity中的socket都已实例化，并建立了连接
     private String name;
     private String macAddress;
     private String my_name;

@@ -11,12 +11,14 @@ import android.os.Message;
 import android.util.Log;
 
 import com.wzj.bean.Member;
-import com.wzj.util.StringToLong;
-import com.wzj.wifi_direct.DeviceDetailFragment;
 import com.wzj.util.GetPath;
+import com.wzj.util.StringToLong;
+import com.wzj.wifi_direct.BatteryReceiver;
+import com.wzj.wifi_direct.DeviceDetailFragment;
 import com.wzj.wifi_direct.WiFiDirectActivity;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -25,17 +27,19 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 
 /**
  * Created by wzj on 2017/3/3.
  */
-
+//ServerWrite目前并未使用，写操作都通过ClientWrite实现
 public class ServerThread implements Runnable {
     private Context context;
     private static ServerSocket serverSocket;
@@ -44,11 +48,12 @@ public class ServerThread implements Runnable {
     private String type;
     private Socket socket;
     private Uri uri;
-    //private static UDPBroadcast udpBroadcast;
     private Map<String, Socket> tcpConnections;
     private static Map<String, Map<String, Member>> memberMap;
     private WifiP2pDevice myDevice;
-    private List<Member> memberList;
+    public static Timer timer;
+    private long broadcastPeriod = 1000*60;
+
     public ServerThread(Context context, Map<String, Map<String, Member>> memberMap, Handler mHandler, String type, Map<String, Socket> tcpConnections, WifiP2pDevice myDevice) {
         this.context = context;
         this.memberMap = memberMap;
@@ -56,10 +61,6 @@ public class ServerThread implements Runnable {
         this.type = type;
         this.tcpConnections = tcpConnections;
         this.myDevice = myDevice;
-    }
-
-    public void setMemberList(List<Member> memberList) {
-        this.memberList = memberList;
     }
 
     public void setType(String type) {
@@ -81,28 +82,48 @@ public class ServerThread implements Runnable {
                 serverSocket = new ServerSocket();
                 serverSocket.setReuseAddress(true);
                 serverSocket.bind(new InetSocketAddress(DeviceDetailFragment.GO_ADDRESS, DeviceDetailFragment.PORT));
+                //服务器端开启广播读
+                UDPBroadcast udpBroadcast = new UDPBroadcast(mHandler);
+                udpBroadcast.setType(1);
+                udpBroadcast.setIpAddress(DeviceDetailFragment.GO_ADDRESS);
+                new Thread(udpBroadcast).start();
+                //周期性广播本机信息
+                final Member member = new Member(DeviceDetailFragment.GO_ADDRESS, "(GO)"+myDevice.deviceName, myDevice.deviceAddress, BatteryReceiver.power);
+                if(timer == null){
+                    timer = new Timer();
+                    timer.schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            member.setPower(BatteryReceiver.power);
+                            UDPBroadcast udpBroadcastWrite = new UDPBroadcast(0, "1", member);
+                            new Thread(udpBroadcastWrite).start();
+                        }
+                    }, broadcastPeriod, broadcastPeriod);
+                }
             }
             Log.d(WiFiDirectActivity.TAG, "ServerThread：线程启动");
             if(type.equals("read")){
                 while (true) {
-
                     System.out.println("ServerThread:执行次数 "+ count++);
                     Socket client = serverSocket.accept();
-                    System.out.println(memberList.size());
-                    //memberList.clear();
                     System.out.println("连接到新客户端！！！"+client.getInetAddress().getHostAddress());
                     //this.socket = client;
                     BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(client.getInputStream()));
                     String deviceName = bufferedReader.readLine();
                     String macAddress = bufferedReader.readLine();
-                    System.out.println("看这里："+ macAddress);
-                    List<Member> m = memberList;
+                    float power = Float.valueOf(bufferedReader.readLine());
+                    System.out.println("看这里power："+ power);
+                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(client.getOutputStream()));
+                    writer.write(client.getInetAddress().getHostAddress());
+                    writer.newLine();
+                    writer.flush();
                     //更新tcpConnections
                     tcpConnections.put(client.getInetAddress().getHostAddress(), client);
                     //更新memberMap
-                    Member member = new Member(client.getInetAddress().getHostAddress(), deviceName, macAddress);
+                    Member member = new Member(client.getInetAddress().getHostAddress(), deviceName, macAddress, power);
                     //加入GO的信息
-                    Member groupOwner = new Member(DeviceDetailFragment.GO_ADDRESS, "(GO)"+myDevice.deviceName, myDevice.deviceAddress);
+                    Member groupOwner = new Member(DeviceDetailFragment.GO_ADDRESS, "(GO)"+myDevice.deviceName, myDevice.deviceAddress, BatteryReceiver.power);
+                    System.out.println("看这里power："+ member.getPower());
                     Map<String, Member> tempMap = new HashMap<>();
                     if(!memberMap.containsKey(myDevice.deviceAddress)){
                         Map<String, Member> tempMapG = new HashMap<>();
@@ -117,8 +138,17 @@ public class ServerThread implements Runnable {
                     UDPBroadcast udpBroadcast = new UDPBroadcast(memberMap);
                     new Thread(udpBroadcast).start();
                     System.out.println("ServerThread: "+ memberMap.size()+" " +memberMap.get(macAddress));
-
                     new Thread(new ServerRead(client)).start();
+                    //再发一遍广播
+                    Timer timer = new Timer();
+                    timer.schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            UDPBroadcast udpBroadcast = new UDPBroadcast(memberMap);
+                            new Thread(udpBroadcast).start();
+                        }
+                    }, 5000);
+
                 }
             }else if(type.equals("write")) {
                 new Thread(new ServerWrite(socket)).start();
@@ -127,7 +157,6 @@ public class ServerThread implements Runnable {
             Log.e(WiFiDirectActivity.TAG, "ServerThread 118");
             e.printStackTrace();
         }
-
     }
     public static void close(){
         if(serverSocket != null && !serverSocket.isClosed()){
@@ -161,17 +190,6 @@ public class ServerThread implements Runnable {
                     if(flag == StringToLong.transfer("Messagem")){
                         //文本消息
                         String message = "";
-                        /*long totalLength = inputStream.readLong();
-                        System.out.println(totalLength);*/
-                        /*byte buf[] = new byte[4096];
-                        int len = 0;
-                        int msg_leng = 0;*/
-                        /*while(msg_leng < totalLength){
-                            len = inputStream.read(buf);
-                            String str = new String(buf, 0, len);
-                            message += str;
-                            msg_leng += len;
-                        }*/
                         message = inputStream.readUTF();
                         //message = new String(message.getBytes(), "utf-8");
                         System.out.println("----Gson: "+ message);
@@ -181,6 +199,10 @@ public class ServerThread implements Runnable {
                         bundle.putString("message", message);
                         msg.setData(bundle);
                         mHandler.sendMessage(msg);
+                        synchronized (WiFiDirectActivity.dataSize){
+                            WiFiDirectActivity.dataSize += 8;
+                            WiFiDirectActivity.dataSize += message.getBytes().length;
+                        }
 
                     }else{
                         long totalLength = flag;
@@ -193,10 +215,9 @@ public class ServerThread implements Runnable {
                         }
 
                         //读开始
-                        byte buf[] = new byte[1024];
-                        int len;
+                        byte buf[] = new byte[1024*1024*10];
+                        int len = 0;
                         int fileLength = 0;
-
                         FileOutputStream outputStream = new FileOutputStream(file);
                         Log.d(WiFiDirectActivity.TAG, "ServerRead: -" + count++ + "- AsyncTask处理client请求 " + file.toString());
                         Log.d(WiFiDirectActivity.TAG, "ServerRead:处理client请求" + file.toString());
@@ -204,7 +225,11 @@ public class ServerThread implements Runnable {
                             len = inputStream.read(buf);
                             outputStream.write(buf, 0, len);
                             fileLength += len;
+                            synchronized (WiFiDirectActivity.dataSize) {
+                                WiFiDirectActivity.dataSize += len;
+                            }
                         }
+
                         System.out.println("ServerRead: 读取完毕。。。。");
                         Message msg = new Message();
                         msg.what = 1;
@@ -212,6 +237,7 @@ public class ServerThread implements Runnable {
                         bundle.putString("file", file.getAbsolutePath());
                         msg.setData(bundle);
                         mHandler.sendMessage(msg);
+
                     }
 
                 }
@@ -252,7 +278,6 @@ public class ServerThread implements Runnable {
                 File file = new File(GetPath.getPath(context, uri));
                 stream.writeLong(file.length());
                 System.out.println("ServerWrite:服务端写入开始 "+socket.getInetAddress().getHostAddress() + file.length());
-                //Demo代码不完整
                 byte buf[] = new byte[1024];
                 int length;
                 while ((length = in.read(buf)) != -1) {

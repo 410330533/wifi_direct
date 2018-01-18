@@ -77,11 +77,11 @@
                 android:textSize="13sp"
                 android:layout_gravity="right"/>
             <Button
-                android:id="@+id/btn_multicast"
+                android:id="@+id/btn_service"
                 android:layout_width="wrap_content"
                 android:layout_weight="1"
                 android:layout_height="0dp"
-                android:text="1232"
+                android:text="publish service"
                 android:minHeight="0dp"
                 android:minWidth="0dp"
                 android:textSize="13sp"

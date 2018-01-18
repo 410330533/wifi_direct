@@ -10,11 +10,14 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 
-import com.wzj.util.StringToLong;
-import com.wzj.wifi_direct.DeviceDetailFragment;
+import com.wzj.bean.Member;
 import com.wzj.util.GetPath;
+import com.wzj.util.StringToLong;
+import com.wzj.wifi_direct.BatteryReceiver;
+import com.wzj.wifi_direct.DeviceDetailFragment;
 import com.wzj.wifi_direct.WiFiDirectActivity;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -23,10 +26,15 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
+
+import static com.wzj.wifi_direct.BatteryReceiver.power;
 
 /**
  * Created by wzj on 2017/3/3.
@@ -41,11 +49,11 @@ public class ClientThread implements Runnable {
     private int port;
     private Socket socket;
     private WifiP2pDevice myDevice;
-    //private static UDPBroadcast udpBroadcast;
     private Map<String, Socket> tcpConnections;
     private String type = "read";
     private String message;
-
+    public static Timer timer;
+    private long broadcastPeriod = 1000*60;
     public ClientThread(Context context, Handler mHandler, String address, int port, WifiP2pDevice myDevice, Map<String, Socket> tcpConnections) {
         this.context = context;
         this.mHandler = mHandler;
@@ -94,11 +102,6 @@ public class ClientThread implements Runnable {
     @Override
     public void run() {
         if (socket == null) {
-            /*try {
-                socket.setReuseAddress(true);
-            } catch (SocketException e) {
-                e.printStackTrace();
-            }*/
             socket = new Socket();
         }
         try {
@@ -107,8 +110,6 @@ public class ClientThread implements Runnable {
                 Log.d(WiFiDirectActivity.TAG, "ClientThread：client socket未连接");
                 //this.address = new InetSocketAddress(goAddress, goPort);
                 //socket.connect(this.address, SOCKET_TIMEOUT);
-
-
                 //修改！！！！1
                 //socket.connect((new InetSocketAddress(goAddress, goPort)), SOCKET_TIMEOUT);
                 //socket.bind(new InetSocketAddress("192.168.49.207",8763));
@@ -116,18 +117,6 @@ public class ClientThread implements Runnable {
                 socket.connect((new InetSocketAddress(address, port)));
                 //更新tcpConnections
                 tcpConnections.put(socket.getInetAddress().getHostAddress(), socket);
-                //更新memberList
-               /* Message msg = new Message();
-                Gson gson = new Gson();
-                Map<String, Member> map = new HashMap<>();
-                Map<String, Map<String, Member>> memberMap = new HashMap<>();
-                map.put(socket.getInetAddress().getHostAddress(), new Member(socket.getInetAddress().getHostAddress(),
-                        "(GO)"+group.getOwner().deviceName));
-                memberMap.put(group.getOwner().deviceAddress, map);
-                String str = gson.toJson(memberMap);
-                msg.what = 5;
-                Bundle bundle = new Bundle();
-                bundle.putString("memberMap", str.trim());*/
                 //将本机信息发送给GO
                 if(socket.getInetAddress().getHostAddress().equals(DeviceDetailFragment.GO_ADDRESS)){
                     BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
@@ -135,11 +124,29 @@ public class ClientThread implements Runnable {
                     writer.newLine();
                     writer.write(myDevice.deviceAddress);
                     writer.newLine();
+                    writer.write(String.valueOf(BatteryReceiver.power));
+                    writer.newLine();
                     writer.flush();
+                    BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                    String ipAddress = bufferedReader.readLine();
                     //启动广播包接收线程
                     UDPBroadcast udpBroadcast = new UDPBroadcast(mHandler);
                     udpBroadcast.setType(1);
+                    udpBroadcast.setIpAddress(ipAddress);
                     new Thread(udpBroadcast).start();
+                    //周期性广播本机信息
+                    final Member member = new Member(ipAddress, myDevice.deviceName, myDevice.deviceAddress, power);
+                    if(timer == null){
+                        timer = new Timer();
+                        timer.schedule(new TimerTask() {
+                            @Override
+                            public void run() {
+                                member.setPower(power);
+                                UDPBroadcast udpBroadcastWrite = new UDPBroadcast(0, "1", member);
+                                new Thread(udpBroadcastWrite).start();
+                            }
+                        }, broadcastPeriod, broadcastPeriod);
+                    }
                 }
             }
             Log.d(WiFiDirectActivity.TAG, "ClientThread：client socket已连接" + socket.isConnected());
@@ -172,7 +179,7 @@ public class ClientThread implements Runnable {
             }
         }
     }
-
+    //写文本消息
     private class ClientWriteMessage implements Runnable {
 
         @Override
@@ -183,16 +190,10 @@ public class ClientThread implements Runnable {
                 Log.d(WiFiDirectActivity.TAG, "ClientWrite：客户端写入message开始 ");
                 long flag = StringToLong.transfer("Messagem");
                 stream.writeLong(flag);
-                //stream.writeLong(message.length());
-                /*System.out.println("-----message "+message);
-                stream.writeBytes(message);*/
                 stream.writeUTF(message);
                 stream.flush();
                 //stream.close();
                 Log.d(WiFiDirectActivity.TAG, "ClientWrite：客户端写入message完毕");
-                /*Message msg = new Message();
-                msg.what = 2;
-                mHandler.sendMessage(msg);*/
             } catch (FileNotFoundException e) {
                 Log.d(WiFiDirectActivity.TAG, e.toString());
                 e.printStackTrace();
@@ -201,24 +202,10 @@ public class ClientThread implements Runnable {
                 Log.d(WiFiDirectActivity.TAG, e.toString());
                 System.out.println(e.getMessage());
                 e.printStackTrace();
-
-                /*if(e.getMessage().equals("sendto failed: EPIPE (Broken pipe)")){
-                    try {
-                        socket.close();
-                        socket = null;
-                        Log.d(WiFiDirectActivity.TAG, "ClientThread：关闭client socket");
-                        //提示用户重新连接
-                        Message msg = new Message();
-                        msg.what = 3;
-                        mHandler.sendMessage(msg);
-                    } catch (IOException e1) {
-                        Log.d(WiFiDirectActivity.TAG, e1.toString());
-                        e.printStackTrace();
-                    }
-                }*/
             }
         }
     }
+    //写图片
     private class ClientWrite implements Runnable {
 
         @Override
@@ -232,7 +219,6 @@ public class ClientThread implements Runnable {
                 File file = new File(GetPath.getPath(context, uri));
                 Log.d(WiFiDirectActivity.TAG, "ClientWrite：客户端写入开始 " + GetPath.getPath(context, uri));
                 stream.writeLong(file.length());
-                //Demo代码不完整
                 byte buf[] = new byte[1024];
                 int length;
                 while ((length = in.read(buf)) != -1) {
@@ -260,7 +246,6 @@ public class ClientThread implements Runnable {
                         socket.close();
                         socket = null;
                         Log.d(WiFiDirectActivity.TAG, "ClientThread：关闭client socket");
-                        //提示用户重新连接
                         Message msg = new Message();
                         msg.what = 3;
                         mHandler.sendMessage(msg);
@@ -272,7 +257,7 @@ public class ClientThread implements Runnable {
             }
         }
     }
-
+    //读取消息，对文本与图片类型消息进行判断，并采取不同的处理方式
     private class ClientRead implements Runnable {
 
         @Override
@@ -286,16 +271,6 @@ public class ClientThread implements Runnable {
                     if(flag == StringToLong.transfer("Messagem")){
                         //文本消息
                         String message = "";
-                        /*long totalLength = inputStream.readLong();
-                        byte buf[] = new byte[4096];
-                        int len = 0;
-                        int msg_leng = 0;
-                        while(msg_leng < totalLength){
-                            len = inputStream.read(buf);
-                            String str = new String(buf, 0, len);
-                            message += str;
-                            msg_leng += len;
-                        }*/
                         message = inputStream.readUTF();
                         System.out.println("----Gson: "+ message);
                         Message msg = new Message();
