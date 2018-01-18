@@ -41,7 +41,7 @@ public class GroupOwnerParametersCollection implements Runnable {
                 if (wiFiDirectActivity.getIsGroupOwner()){
                     //power = 0.14f;
                     Log.d(TAG, ""+ power +" " + wiFiDirectActivity.getIsGroupOwner());
-                    if(power < 0.21){
+                    if(power < 0){//0.21
                         if(power > (float)(Math.round(0.1*100))/100){
                             if(wiFiDirectActivity.getGroupSize() == 0){
                                 Log.d(TAG, "组主选择性切换");
@@ -76,14 +76,13 @@ public class GroupOwnerParametersCollection implements Runnable {
                                 float maxPower = 0;
                                 String maxMac = "";
                                 Map<String, Member> lastMembers = new HashMap<>();
-                                for(Map.Entry<String, Map<String, Member>> map : detailFragment.getMemberMap().entrySet()){
-                                    for(Map.Entry<String, Member> mapE : map.getValue().entrySet()){
-                                        lastMembers.put(map.getKey(), mapE.getValue());
-                                        if(mapE.getValue().getPower() > maxPower){
-                                            maxPower = mapE.getValue().getPower();
-                                            maxMac = map.getKey();
-                                        }
+                                for(Map.Entry<String, Member> map : detailFragment.getMemberMap().entrySet()){
+                                    lastMembers.put(map.getKey(), map.getValue());
+                                    if(map.getValue().getPower() > maxPower){
+                                        maxPower = map.getValue().getPower();
+                                        maxMac = map.getKey();
                                     }
+
                                 }
                                 Log.d(TAG, maxMac + "/" +maxPower);
                                 final String deviceAddress = maxMac;
@@ -149,13 +148,11 @@ public class GroupOwnerParametersCollection implements Runnable {
                                 float maxPower = 0;
                                 String maxMac = "";
                                 Map<String, Member> lastMembers = new HashMap<>();
-                                for(Map.Entry<String, Map<String, Member>> map : detailFragment.getMemberMap().entrySet()){
-                                    for(Map.Entry<String, Member> mapE : map.getValue().entrySet()){
-                                        lastMembers.put(map.getKey(), mapE.getValue());
-                                        if(mapE.getValue().getPower() > maxPower){
-                                            maxPower = mapE.getValue().getPower();
-                                            maxMac = map.getKey();
-                                        }
+                                for(Map.Entry<String, Member> map : detailFragment.getMemberMap().entrySet()){
+                                    lastMembers.put(map.getKey(), map.getValue());
+                                    if(map.getValue().getPower() > maxPower){
+                                        maxPower = map.getValue().getPower();
+                                        maxMac = map.getKey();
                                     }
                                 }
                                 Log.d(TAG, maxMac + "/" +maxPower);

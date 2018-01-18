@@ -7,9 +7,7 @@ import android.net.wifi.p2p.WifiP2pManager.Channel;
 import android.util.Log;
 
 import com.wzj.bean.Network;
-import com.wzj.handover.algorithm.CostFunctionBasedAlgorithm;
 import com.wzj.handover.algorithm.FNQDAlgorithmSimple;
-import com.wzj.handover.algorithm.RSSIBasedAlgorithm;
 import com.wzj.wifi_direct.WiFiDirectActivity;
 
 /**
@@ -38,7 +36,7 @@ public class MemberParametersCollection implements Runnable {
         while (flag){
             try {
                 int rssi = wiFiDirectActivity.getRSSI(wiFiDirectActivity.getSsid());
-                //rssi = -90;
+                rssi = -90;
                 double t = 0;
                 double ct = 0;
                 int rt = 0;
@@ -76,10 +74,10 @@ public class MemberParametersCollection implements Runnable {
                         //PEV阈值
 
                         //Network currentNetwork = new Network(null, wiFiDirectActivity.getRSSI("^DIRECT-[a-zA-Z 0-9]+-[a-zA-Z _0-9]+"), wiFiDirectActivity.getLoadBalance(100), wiFiDirectActivity.getPower());
-                        RSSIBasedAlgorithm rssiBasedAlgorithm = new RSSIBasedAlgorithm(wiFiDirectActivity.getCandidateNetworks(), wiFiDirectActivity.getRSSI(wiFiDirectActivity.getSsid()), rt);
+                        /*RSSIBasedAlgorithm rssiBasedAlgorithm = new RSSIBasedAlgorithm(wiFiDirectActivity.getCandidateNetworks(), wiFiDirectActivity.getRSSI(wiFiDirectActivity.getSsid()), rt);
                         rssiBasedAlgorithm.process();
                         CostFunctionBasedAlgorithm costFunctionBasedAlgorithm = new CostFunctionBasedAlgorithm(wiFiDirectActivity.getCandidateNetworks(), ct, weightsC);
-                        costFunctionBasedAlgorithm.process();
+                        costFunctionBasedAlgorithm.process();*/
                         FNQDAlgorithmSimple fnqdAlgorithm = new FNQDAlgorithmSimple(wiFiDirectActivity.getCandidateNetworks(), mParameters, weights, t);
                         final Network optimalNetwork = fnqdAlgorithm.fnqdProcess();
                         //建立连接

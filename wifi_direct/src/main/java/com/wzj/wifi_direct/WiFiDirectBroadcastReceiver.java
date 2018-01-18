@@ -15,7 +15,6 @@ import com.wzj.handover.MemberParametersCollection;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -111,19 +110,18 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
                     Log.d("WFDBroadcastReceiver", "组主组内切换");
                     this.handoverWithinGroup();
                 }else*/
-                Map<String, Map<String, Member>> memberMap = detailFragment.getMemberMap();
+                Map<String, Member> memberMap = detailFragment.getMemberMap();
                 //从MemberMap中得到groupowner
-                if(!activity.getIsGroupOwner() &&  memberMap != null && memberMap.get(activity.getGroupOwnerMac()) != null){
+                //组内切换
+                /*if(!activity.getIsGroupOwner() &&  memberMap != null && memberMap.get(activity.getGroupOwnerMac()) != null){
                     Member groupOwner = null;
-                    for (Entry<String, Member> entry : memberMap.get(activity.getGroupOwnerMac()).entrySet()){
-                        groupOwner = entry.getValue();
-                    }
+                    groupOwner = memberMap.get(activity.getGroupOwnerMac());
                     if(groupOwner != null && groupOwner.getPower() < 0.21){
                         Log.d("WFDBroadcastReceiver", "组员组内切换");
                         this.handoverWithinGroup();
                     }
 
-                }
+                }*/
                 activity.resetData();
                 detailFragment.closeConnections();
                 //开启组员监听线程
@@ -173,7 +171,7 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
             int state = intent.getIntExtra(WifiP2pManager.EXTRA_DISCOVERY_STATE, WifiP2pManager.WIFI_P2P_DISCOVERY_STOPPED);
             if(state == WifiP2pManager.WIFI_P2P_DISCOVERY_STOPPED){
                 Log.d("WFDBroadcastReceiver", "设备发现停止！");
-                Timer timer = new Timer();
+                /*Timer timer = new Timer();
                 timer.schedule(new TimerTask() {
                     @Override
                     public void run() {
@@ -189,7 +187,7 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
                             }
                         });
                     }
-                }, 1000);
+                }, 1000);*/
             }else if(state == WifiP2pManager.WIFI_P2P_DISCOVERY_STARTED){
                 Log.d("WFDBroadcastReceiver", "设备发现开始！");
             }else{
@@ -210,13 +208,11 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
         DeviceDetailFragment detailFragment = (DeviceDetailFragment) activity.getFragmentManager().findFragmentById(R.id.frag_detail);
         float maxPower = 0;
         String maxMac = "";
-        for(Map.Entry<String, Map<String, Member>> map : detailFragment.getMemberMap().entrySet()){
-            for(Map.Entry<String, Member> mapE : map.getValue().entrySet()){
-                lastMembers.put(map.getKey(), mapE.getValue());
-                if(mapE.getValue().getPower() > maxPower){
-                    maxPower = mapE.getValue().getPower();
-                    maxMac = map.getKey();
-                }
+        for(Map.Entry<String, Member> map : detailFragment.getMemberMap().entrySet()){
+            lastMembers.put(map.getKey(), map.getValue());
+            if(map.getValue().getPower() > maxPower){
+                maxPower = map.getValue().getPower();
+                maxMac = map.getKey();
             }
         }
         Log.d("handoverWithinGroup", maxMac + "/" +maxPower);

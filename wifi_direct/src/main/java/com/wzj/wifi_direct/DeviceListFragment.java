@@ -27,7 +27,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Random;
 import java.util.Timer;
-import java.util.TimerTask;
 
 /**
  * Created by wzj on 2017/1/17.
@@ -202,32 +201,33 @@ public class DeviceListFragment extends ListFragment implements WifiP2pManager.P
         }
         peers.clear();
         peers.addAll(peerList.getDeviceList());
+        ((WiFiPeerListAdapter)getListAdapter()).notifyDataSetChanged();
         Collection<WifiP2pDevice> p2pDevices = peerList.getDeviceList();
         if(((WiFiDirectActivity)getActivity()).isAutoConnect()){
             final WifiP2pConfig wifiP2pConfig = ((WiFiDirectActivity)getActivity()).getWifiP2pConfig();
             for (WifiP2pDevice wifiP2pDevice : p2pDevices){
                 if(wifiP2pDevice.deviceAddress.equals(wifiP2pConfig.deviceAddress)){
-                    ((WiFiDirectActivity)getActivity()).connect(wifiP2pConfig);
-                    Log.d("AutoConnect", "自动连接！");
+                    Log.d("AutoConnect", "自动连接开始！");
                     ((WiFiDirectActivity)getActivity()).setAutoConnect(false);
                     Random random = new Random();
                     int ran = random.nextInt(6);
-                    autoConnectTimer = new Timer();
+                    ((WiFiDirectActivity)getActivity()).connect(wifiP2pConfig);
+                    /*autoConnectTimer = new Timer();
                     autoConnectTimer.schedule(new TimerTask() {
                         @Override
                         public void run() {
                             if(!((WiFiDirectActivity)getActivity()).getIsConnected()){
                                 ((WiFiDirectActivity)getActivity()).connect(wifiP2pConfig);
-                                Log.d("AutoConnect", "再次自动连接！");
+                                Log.d("AutoConnect", "自动连接！");
                             }
                         }
-                    },5000,3000+1000*ran);
+                    },0,3000+1000*ran);*/
 
                 }
             }
         }
 
-        ((WiFiPeerListAdapter)getListAdapter()).notifyDataSetChanged();
+
 
         if((((WiFiDirectActivity)getActivity()).getReceiver()).isConnected()){
             for (WifiP2pDevice wifiP2pDevice : p2pDevices){

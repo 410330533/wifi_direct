@@ -25,7 +25,7 @@ public class MembershipQuantitativeValue implements Runnable {
             try {
                 Network network = blockingQueue.take();
                 System.out.println("计算MQV "+blockingQueue.size());
-                //long startTime=System.nanoTime();   //获取开始时间
+                long startTime=System.nanoTime();   //获取开始时间
                 //计算NQV
                 double factors[] = network.getFactors();
                 Matrix nqv = computeNQV(factors, mParameters);
@@ -39,10 +39,10 @@ public class MembershipQuantitativeValue implements Runnable {
                 Matrix mqv = new Matrix(aMQV, aMQV.length);
                 network.setMqv(mqv);
                 //System.out.print("计算MQV" + network.getId() + " ：");
-                //mqv.print(mqv.getColumnDimension(), 4);
+                mqv.print(mqv.getColumnDimension(), 4);
                 QuantitativeDecision.blockingQueue.add(network);
-                //long endTime=System.nanoTime(); //获取结束时间
-                //System.out.println("MQV程序运行时间： "+(endTime-startTime)+"ms");
+                long endTime=System.nanoTime(); //获取结束时间
+                System.out.println("MQV程序运行时间： "+(endTime-startTime)+"ms");
             } catch (InterruptedException e) {
                 System.out.println("MembershipQuantitativeValue线程中止");
                 break;

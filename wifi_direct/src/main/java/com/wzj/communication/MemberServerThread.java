@@ -10,11 +10,12 @@ import android.os.Message;
 import android.util.Log;
 
 import com.wzj.bean.Member;
+import com.wzj.util.GetPath;
 import com.wzj.util.StringToLong;
 import com.wzj.wifi_direct.DeviceDetailFragment;
-import com.wzj.util.GetPath;
 import com.wzj.wifi_direct.WiFiDirectActivity;
 
+import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -22,6 +23,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Map;
@@ -40,9 +42,9 @@ public class MemberServerThread implements Runnable {
     private Socket socket;
     private Uri uri;
     private Map<String, Socket> tcpConnections;
-    private Map<String, Map<String, Member>> memberMap;
+    private Map<String, Member> memberMap;
 
-    public MemberServerThread(Context context, Map<String, Map<String, Member>> memberMap, Handler mHandler, String type, Map<String, Socket> tcpConnections) {
+    public MemberServerThread(Context context, Map<String, Member> memberMap, Handler mHandler, String type, Map<String, Socket> tcpConnections) {
         this.context = context;
         this.memberMap = memberMap;
         this.mHandler = mHandler;
@@ -74,9 +76,22 @@ public class MemberServerThread implements Runnable {
                     System.out.println("MemberServerThread:执行次数 "+count);
                     Socket client = serverSocket.accept();
                     this.socket = client;
-                    //更新tcpConnections
-                    tcpConnections.put(socket.getInetAddress().getHostAddress(), client);
-                    System.out.println("MemberMemberServerThread: "+ memberMap.size()+" " +memberMap.get(client.getInetAddress().getHostAddress()));
+                    BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(client.getInputStream()));
+                    String deviceName = bufferedReader.readLine();
+                    String macAddress = bufferedReader.readLine();
+                    //更新tcpConnections；组间通信，IP冲突
+
+                    if(socket.getInetAddress().getHostAddress().equals(DeviceDetailFragment.GO_ADDRESS) && tcpConnections.containsKey(DeviceDetailFragment.GO_ADDRESS)){
+                        Log.d("IP冲突", client.getInetAddress().getHostAddress());
+                        tcpConnections.put("192.168.49.0", client);
+                        memberMap.put(macAddress, new Member("192.168.49.0", deviceName, macAddress));
+                        Message msg = new Message();
+                        msg.what = 6;
+                        mHandler.sendMessage(msg);
+                    }else{
+                        tcpConnections.put(socket.getInetAddress().getHostAddress(), client);
+                    }
+                    System.out.println("MemberServerThread: "+ memberMap.size()+" " +memberMap.get(client.getInetAddress().getHostAddress()));
                     new Thread(new MSRead(client)).start();
                 }
             }else if(type.equals("write")){
@@ -164,6 +179,7 @@ public class MemberServerThread implements Runnable {
             } finally {
                 try {
                     if(socket != null && !socket.isClosed()){
+                        tcpConnections.remove(socket.getInetAddress().getHostAddress());
                         socket.close();
                         System.out.println("MSsocket 关闭");
                     }

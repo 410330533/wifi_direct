@@ -26,20 +26,20 @@ public class Fuzzification implements Runnable {
             try {
                 Network network = blockingQueue.take();
                 System.out.println("模糊化：" +blockingQueue.size());
-                //long startTime=System.nanoTime();   //获取开始时间
-                //System.out.println("第 "+ network.getId() +" 个候选网络开始处理---------------");
-                double u[][] = new double[network.getfSize()][mParameters[0].length];
+                long startTime=System.nanoTime();   //获取开始时间
+                System.out.println("第 "+ network.getName() +" 个候选网络开始处理---------------");
+                double u[][] = new double[mParameters.length][mParameters[0].length];
                 double factors[] = network.getFactors();
                 for(int i = 0;i < factors.length;i++){
                     u[i] = membershipFunction(factors[i], mParameters[i]);
                 }
                 //隶属度矩阵
                 Matrix matrix = new Matrix(u);
-                //matrix.print(matrix.getColumnDimension(), 4);
+                matrix.print(matrix.getColumnDimension(), 4);
                 network.setmDegree(matrix);
                 MembershipQuantitativeValue.blockingQueue.add(network);
-                //long endTime=System.nanoTime(); //获取结束时间
-                //System.out.println("模糊化程序运行时间： "+(endTime-startTime)+"ms");
+                long endTime=System.nanoTime(); //获取结束时间
+                System.out.println("模糊化程序运行时间： "+(endTime-startTime)+"ms");
             } catch (InterruptedException e) {
                 System.out.println("Fuzzification线程中止");
                 break;

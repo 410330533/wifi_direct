@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiManager.MulticastLock;
 import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pManager;
@@ -23,6 +24,7 @@ import android.widget.Toast;
 
 import com.wzj.bean.Member;
 import com.wzj.bean.Network;
+import com.wzj.communication.MulticastThread;
 import com.wzj.handover.GroupOwnerParametersCollection;
 import com.wzj.handover.MemberParametersCollection;
 import com.wzj.handover.UpdateServicesThread;
@@ -78,6 +80,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     private Map<String, Member> lastMembers = new HashMap<>();
     private boolean autoConnect = false;
     private WifiP2pConfig wifiP2pConfig = null;
+    private MulticastLock multicastLock;
 
     public boolean getGroupOwnerFind() {
         return groupOwnerFind;
@@ -139,6 +142,11 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         String serviceType = "_handover._tcp";
         UpdateServicesThread updateServicesThread = new UpdateServicesThread(this, manager, channel, instanceName, serviceType);
         threadPoolExecutor.execute(updateServicesThread);*/
+
+        /*Log.d(TAG, "开启muiticastlock");
+        WifiManager wifiManager=(WifiManager)getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        multicastLock=wifiManager.createMulticastLock("multicast.test");
+        multicastLock.acquire();*/
 
     }
     /** register the BroadcastReceiver with the intent values to be matched */
@@ -219,6 +227,8 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         }
         //this.disconnect();
         this.candidateNetworks.clear();
+        /*Log.d(TAG, "关闭muiticastlock");
+        this.multicastLock.release();*/
         super.onDestroy();
 
     }
@@ -351,7 +361,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
                 public void onFailure(int reason) {
                     Toast.makeText(WiFiDirectActivity.this, "Connect failed. Retry."+reason,
                             Toast.LENGTH_SHORT).show();
-                    cancel();
+                    //cancel();
                     /*Timer timer = new Timer();
                     timer.schedule(new TimerTask() {
                         @Override
@@ -572,12 +582,39 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         return rssi;
     }
     public void publishServices(){
+        MulticastThread multicastThread = new MulticastThread();
+        new Thread(multicastThread).start();
 
-        manager.setDnsSdResponseListeners(channel, this, this);
+       /* manager.setDnsSdResponseListeners(channel, this, this);
         String instanceName = "HandoverParameters";
         String serviceType = "_handover._tcp";
         UpdateServicesThread updateServicesThread = new UpdateServicesThread(this, manager, channel, instanceName, serviceType);
-        threadPoolExecutor.execute(updateServicesThread);
+        threadPoolExecutor.execute(updateServicesThread);*/
+
+        /*Map<String, Network> candidateNetwork = new ConcurrentHashMap<>();
+        Network currentNetwork = new Network(null, -90, 1, 0.3, 0.8, true);
+        currentNetwork.setName("a");
+        candidateNetwork.put("a", currentNetwork);
+        long times = 0;
+        for(int j = 0 ;j < 10;j++) {
+            for (int i = 0; i < 1000; i++) {
+                Network network = new Network(null, -10, 1, i/1000.0, 0.5, false);
+                network.setName(""+i);
+                candidateNetwork.put("" + i, network);
+            }
+            double mParameters[][] = new double[][]{{-100, -60, 0}, {0, 0.5, 1}, {0, 0.5, 1}, {0, 0.5, 1}};
+            double weights[] = new double[]{0.38, 0.17, 0.34, 0.11};
+            double t = 0;
+            long startTime=System.nanoTime();   //获取开始时间
+            FNQDAlgorithmSimpleX fnqdAlgorithm = new FNQDAlgorithmSimpleX(candidateNetwork, mParameters, weights, t);
+            Network optimalNetwork = fnqdAlgorithm.fnqdProcess();
+            *//*FNQDAlgorithm fnqdAlgorithm = new FNQDAlgorithm();
+            Network optimalNetwork = fnqdAlgorithm.fnqdProcess(candidateNetwork, mParameters, weights, t);*//*
+            long endTime=System.nanoTime(); //获取结束时间
+            System.out.println("程序运行时间： "+(endTime-startTime)+"ms"+"  "+optimalNetwork.getName());
+            times += endTime-startTime;
+        }
+        System.out.println("程序平均运行时间： "+times/(10*1000000.0)+"ms");*/
 
         /*WifiP2pDnsSdServiceRequest wifiP2pDnsSdServiceRequest = WifiP2pDnsSdServiceRequest.newInstance(instanceName, serviceType);
         manager.addServiceRequest(channel, wifiP2pDnsSdServiceRequest, new ActionListener() {
@@ -722,13 +759,11 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         DeviceDetailFragment detailFragment = (DeviceDetailFragment)getFragmentManager().findFragmentById(R.id.frag_detail);
         float maxPower = 0;
         String maxMac = "";
-        for(Map.Entry<String, Map<String, Member>> map : detailFragment.getMemberMap().entrySet()){
-            for(Map.Entry<String, Member> mapE : map.getValue().entrySet()){
-                lastMembers.put(map.getKey(), mapE.getValue());
-                if(mapE.getValue().getPower() > maxPower){
-                    maxPower = mapE.getValue().getPower();
-                    maxMac = map.getKey();
-                }
+        for(Map.Entry<String, Member> map : detailFragment.getMemberMap().entrySet()){
+            lastMembers.put(map.getKey(), map.getValue());
+            if(map.getValue().getPower() > maxPower){
+                maxPower = map.getValue().getPower();
+                maxMac = map.getKey();
             }
         }
         Log.d("handoverWithinGroup", maxMac + "/" +maxPower);

@@ -3,6 +3,8 @@ package com.wzj.handover.algorithm;
 import com.wzj.bean.Network;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -11,6 +13,7 @@ import java.util.concurrent.Executors;
  */
 
 public class FNQDAlgorithm {
+    public static Network currentNetwork;
     /*public static void main(String[] args){
 
         List<Network> candidateNetwork = new ArrayList<>();
@@ -34,53 +37,69 @@ public class FNQDAlgorithm {
         long endTime=System.currentTimeMillis(); //获取结束时间
         System.out.println("程序运行时间： "+(endTime-startTime)+"ms");
     }*/
-    public Network fnqdProcess(Network currentNetwrok, List<Network> candidateNetwork, double mParameters[][], double[] weights, double t){
-        long startTime=System.currentTimeMillis();   //获取开始时间
+    public Network fnqdProcess(Map<String, Network> candidateNetwork, double mParameters[][], double[] weights, double t){
+        //long startTime=System.currentTimeMillis();   //获取开始时间
         System.out.println("FNQD处理----------------------------------------------");
         Network optimalNetwork = null;
-        double pev[] = new double[candidateNetwork.size()+1];
-        candidateNetwork.add(currentNetwrok);
+        //Network currentNetwork = null;
+        //double pev[] = new double[candidateNetwork.size()+1];
+        Boolean computeFinish = false;
+        //candidateNetwork.put(currentNetwrok);
         //创建线程池
         ExecutorService threadPool = Executors.newFixedThreadPool(3);
         Thread fuzzification = new Thread(new Fuzzification(mParameters));
         Thread membershipQuantitativeValue = new Thread(new MembershipQuantitativeValue(mParameters));
-        Thread quantitativeDecision = new Thread(new QuantitativeDecision(weights, pev, candidateNetwork.size()));
+        Thread quantitativeDecision = new Thread(new QuantitativeDecision(weights, computeFinish, candidateNetwork.size(), currentNetwork));
         threadPool.execute(fuzzification);
         threadPool.execute(membershipQuantitativeValue);
         threadPool.execute(quantitativeDecision);
-        for(int i = 0;i < candidateNetwork.size();i++){
-            Fuzzification.blockingQueue.add(candidateNetwork.get(i));
+        for(Entry<String, Network> entry : candidateNetwork.entrySet()){
+            Fuzzification.blockingQueue.add(entry.getValue());
         }
-        synchronized (pev){
+        synchronized (computeFinish){
             try {
                 System.out.println("线程等待，等待pev计算完成.............");
-                pev.wait();
+                computeFinish.wait();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
-        long endTime=System.currentTimeMillis(); //获取结束时间
-        System.out.println("程序运行时间： "+(endTime-startTime)+"ms");
-        for(int i = 0;i<candidateNetwork.size();i++){
-            candidateNetwork.get(i).setPev(pev[i]);
-        }
-        //得到当前网络的PEV
-        double cPEV = currentNetwrok.getPev();
-        candidateNetwork.remove(candidateNetwork.size()-1);
+        //long endTime=System.currentTimeMillis(); //获取结束时间
+        //System.out.println("程序运行时间： "+(endTime-startTime)+"ms");
+        double cPEV = currentNetwork.getPev();
+        /*int count = 0;
+
+
+        for(Entry<String, Network> entry : candidateNetwork.entrySet()){
+            //entry.getValue().setPev(pev[count++]);
+            if(entry.getValue().isGroupOwner()){
+                currentNetwrok = entry.getValue();
+                cPEV = entry.getValue().getPev();
+            }
+        }*/
 
         //筛选候选网络
-        for(int i = 0;i<candidateNetwork.size();i++){
-            if(candidateNetwork.get(i).getPev() <= cPEV + t){
-                candidateNetwork.remove(i--);
+        double maxPEV = 0;
+        for(Entry<String, Network> entry : candidateNetwork.entrySet()){
+            if(entry.getValue().getPev() > cPEV + t && entry.getValue().getPev() > maxPEV){
+                maxPEV = entry.getValue().getPev();
+                optimalNetwork = entry.getValue();
             }
         }
         //选择最优切换网络
-        double maxPEV = 0;
-        for(Network n : candidateNetwork){
-            if(n.getPev() > maxPEV){
-                maxPEV = n.getPev();
-                optimalNetwork = n;
+        if(null != optimalNetwork){
+            //System.out.println("最优切换网络："+ optimalNetwork.getWifiP2pDevice().deviceName+"/"+optimalNetwork.getPev());
+            optimalNetwork.setGroupOwner(true);
+            if(currentNetwork != null){
+                currentNetwork.setGroupOwner(false);
             }
+            for(Entry<String, Network> entry : candidateNetwork.entrySet()){
+                if(!entry.getValue().isGroupOwner()){
+                    //candidateNetwork.remove(entry.getKey());
+                }
+            }
+        }else {
+            System.out.println("无最优切换网络");
         }
         System.out.println("FNQD处理完成----------------------------------------------");
 
@@ -91,7 +110,7 @@ public class FNQDAlgorithm {
         //关闭线程池
         List<Runnable> runnableList = threadPool.shutdownNow();
         if(null != optimalNetwork){
-            System.out.println("最优切换网络："+ optimalNetwork.getWifiP2pDevice().deviceName);
+//            System.out.println("最优切换网络："+ optimalNetwork.getWifiP2pDevice().deviceName);
         }else {
             System.out.println("无最优切换网络");
         }

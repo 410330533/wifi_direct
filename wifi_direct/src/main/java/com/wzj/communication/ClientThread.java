@@ -10,6 +10,8 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.wzj.bean.Member;
 import com.wzj.util.GetPath;
 import com.wzj.util.StringToLong;
@@ -31,6 +33,7 @@ import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -46,6 +49,7 @@ public class ClientThread implements Runnable {
     private Handler mHandler;
     private Uri uri;
     private String address;
+    //private String macAddress = "";
     private int port;
     private Socket socket;
     private WifiP2pDevice myDevice;
@@ -53,7 +57,8 @@ public class ClientThread implements Runnable {
     private String type = "read";
     private String message;
     public static Timer timer;
-    private long broadcastPeriod = 1000*60;
+    private long broadcastPeriod = 1000*30;
+    private Map<String, Member> memberMap;
     public ClientThread(Context context, Handler mHandler, String address, int port, WifiP2pDevice myDevice, Map<String, Socket> tcpConnections) {
         this.context = context;
         this.mHandler = mHandler;
@@ -62,13 +67,23 @@ public class ClientThread implements Runnable {
         this.myDevice = myDevice;
         this.tcpConnections = tcpConnections;
     }
-    public ClientThread(Context context, Handler mHandler, WifiP2pDevice myDevice, Map<String, Socket> tcpConnections) {
+
+    public ClientThread(Context context, Handler mHandler, String address, int port, WifiP2pDevice myDevice, Map<String, Socket> tcpConnections, Map<String, Member> memberMap) {
+        this.context = context;
+        this.mHandler = mHandler;
+        this.address = address;
+        this.port = port;
+        this.myDevice = myDevice;
+        this.tcpConnections = tcpConnections;
+        this.memberMap = memberMap;
+    }
+
+
+    public ClientThread(Context context, Handler mHandler, WifiP2pDevice myDevice) {
         this.context = context;
         this.mHandler = mHandler;
         this.myDevice = myDevice;
-        this.tcpConnections = tcpConnections;
     }
-
     public ClientThread(Socket socket, String type, String message) {
         this.socket = socket;
         this.type = type;
@@ -103,6 +118,25 @@ public class ClientThread implements Runnable {
     public void run() {
         if (socket == null) {
             socket = new Socket();
+            /*try {
+                socket = new Socket();
+                String bindAddress = "";
+                Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
+                String regrex = "^wlan0";
+                Pattern pattern = Pattern.compile(regrex);
+                while(networkInterfaces.hasMoreElements()){
+                    NetworkInterface networkInterface = networkInterfaces.nextElement();
+                    Matcher matcher = pattern.matcher(networkInterface.getName());
+                    if(matcher.find()){
+                        bindAddress = networkInterface.getInetAddresses().nextElement().getHostAddress();
+                        Log.d("bindAddress", "匹配/"+bindAddress);
+                    }
+                }
+                socket.bind(new InetSocketAddress(bindAddress, 9002));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }*/
+
         }
         try {
             Log.d(WiFiDirectActivity.TAG, "ClientThread：打开client socket");
@@ -115,8 +149,8 @@ public class ClientThread implements Runnable {
                 //socket.bind(new InetSocketAddress("192.168.49.207",8763));
                 //客户登录初始化操作
                 socket.connect((new InetSocketAddress(address, port)));
-                //更新tcpConnections
-                tcpConnections.put(socket.getInetAddress().getHostAddress(), socket);
+                String macAddress = "";
+                String deviceName = "";
                 //将本机信息发送给GO
                 if(socket.getInetAddress().getHostAddress().equals(DeviceDetailFragment.GO_ADDRESS)){
                     BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
@@ -129,9 +163,25 @@ public class ClientThread implements Runnable {
                     writer.flush();
                     BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                     String ipAddress = bufferedReader.readLine();
+                    macAddress = bufferedReader.readLine();
+                    deviceName = bufferedReader.readLine();
+                    //memMapStr长度问题，超过一行则不能接收
+                    String memMapStr = bufferedReader.readLine();
+                    /*String tempStr = null;
+                    while ((tempStr = bufferedReader.readLine()) != null){
+                        memMapStr += tempStr;
+                    }*/
+                    Log.d("ClientThread:", "TCP收到字符串/"+memMapStr);
+                    Gson gson = new Gson();
+                    Map<String, Member> memberMapTemp = gson.fromJson(memMapStr.trim(), new TypeToken<Map<String, Member>>(){}.getType());
+                    for(Entry<String, Member> entry : memberMapTemp.entrySet()){
+                        memberMap.put(entry.getKey(), entry.getValue());
+                    }
+                    Message message = new Message();
+                    message.what = 6;
+                    mHandler.sendMessage(message);
                     //启动广播包接收线程
-                    UDPBroadcast udpBroadcast = new UDPBroadcast(mHandler);
-                    udpBroadcast.setType(1);
+                    UDPBroadcast udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_READ, mHandler);
                     udpBroadcast.setIpAddress(ipAddress);
                     new Thread(udpBroadcast).start();
                     //周期性广播本机信息
@@ -142,11 +192,33 @@ public class ClientThread implements Runnable {
                             @Override
                             public void run() {
                                 member.setPower(power);
-                                UDPBroadcast udpBroadcastWrite = new UDPBroadcast(0, "1", member);
+                                UDPBroadcast udpBroadcastWrite = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_MEMBER, member);
                                 new Thread(udpBroadcastWrite).start();
                             }
                         }, broadcastPeriod, broadcastPeriod);
                     }
+                    if(tcpConnections.containsKey(socket.getInetAddress().getHostAddress())){
+                        tcpConnections.put("192.168.49.0", socket);
+                        memberMap.put(macAddress, new Member("192.168.49.0", deviceName, macAddress));
+                        Message msg = new Message();
+                        msg.what = 6;
+                        mHandler.sendMessage(msg);
+                    }else{
+                        tcpConnections.put(socket.getInetAddress().getHostAddress(), socket);
+                        memberMap.put(macAddress, new Member(socket.getInetAddress().getHostAddress(), deviceName, macAddress));
+                        Message msg = new Message();
+                        msg.what = 6;
+                        mHandler.sendMessage(msg);
+                    }
+                }else {
+                    //更新tcpConnections；组员间通信
+                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+                    writer.write(myDevice.deviceName);
+                    writer.newLine();
+                    writer.write(myDevice.deviceAddress);
+                    writer.newLine();
+                    writer.flush();
+                    tcpConnections.put(socket.getInetAddress().getHostAddress(), socket);
                 }
             }
             Log.d(WiFiDirectActivity.TAG, "ClientThread：client socket已连接" + socket.isConnected());
@@ -238,6 +310,16 @@ public class ClientThread implements Runnable {
 
             } catch (IOException e) {
                 Log.d(WiFiDirectActivity.TAG, e.toString());
+                if(socket != null ){
+                    if(tcpConnections.containsKey(socket.getInetAddress().getHostAddress())){
+                        tcpConnections.remove(socket.getInetAddress().getHostAddress());
+                    }
+                    try {
+                        socket.close();
+                    } catch (IOException e1) {
+                        e1.printStackTrace();
+                    }
+                }
                 System.out.println(e.getMessage());
                 e.printStackTrace();
 
@@ -259,7 +341,6 @@ public class ClientThread implements Runnable {
     }
     //读取消息，对文本与图片类型消息进行判断，并采取不同的处理方式
     private class ClientRead implements Runnable {
-
         @Override
         public void run() {
             try {

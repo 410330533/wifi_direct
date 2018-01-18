@@ -7,32 +7,27 @@ import java.net.Socket;
  */
 
 public class TCPMember {
+    private String macAddress;
     private Socket socket;
-    private String deviceName;
 
-    public TCPMember(Socket socket, String deviceName) {
+    public TCPMember(String macAddress, Socket socket) {
+        this.macAddress = macAddress;
         this.socket = socket;
-        this.deviceName = deviceName;
-    }
-
-    public void setSocket(Socket socket) {
-        this.socket = socket;
-    }
-
-    public void setDeviceName(String deviceName) {
-        this.deviceName = deviceName;
     }
 
     public Socket getSocket() {
         return socket;
     }
 
-    public String getDeviceName() {
-        return deviceName;
+    public void setSocket(Socket socket) {
+        this.socket = socket;
     }
 
-    public String getDeviceAddress(){
-        return socket.getInetAddress().getHostAddress();
+    public String getMacAddress() {
+        return macAddress;
     }
 
+    public void setMacAddress(String macAddress) {
+        this.macAddress = macAddress;
+    }
 }

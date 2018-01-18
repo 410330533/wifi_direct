@@ -10,6 +10,7 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 
+import com.google.gson.Gson;
 import com.wzj.bean.Member;
 import com.wzj.util.GetPath;
 import com.wzj.util.StringToLong;
@@ -31,7 +32,6 @@ import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -49,12 +49,12 @@ public class ServerThread implements Runnable {
     private Socket socket;
     private Uri uri;
     private Map<String, Socket> tcpConnections;
-    private static Map<String, Map<String, Member>> memberMap;
+    private static Map<String, Member> memberMap;
     private WifiP2pDevice myDevice;
     public static Timer timer;
-    private long broadcastPeriod = 1000*60;
+    private long broadcastPeriod = 1000*30;
 
-    public ServerThread(Context context, Map<String, Map<String, Member>> memberMap, Handler mHandler, String type, Map<String, Socket> tcpConnections, WifiP2pDevice myDevice) {
+    public ServerThread(Context context, Map<String, Member> memberMap, Handler mHandler, String type, Map<String, Socket> tcpConnections, WifiP2pDevice myDevice) {
         this.context = context;
         this.memberMap = memberMap;
         this.mHandler = mHandler;
@@ -83,8 +83,7 @@ public class ServerThread implements Runnable {
                 serverSocket.setReuseAddress(true);
                 serverSocket.bind(new InetSocketAddress(DeviceDetailFragment.GO_ADDRESS, DeviceDetailFragment.PORT));
                 //服务器端开启广播读
-                UDPBroadcast udpBroadcast = new UDPBroadcast(mHandler);
-                udpBroadcast.setType(1);
+                UDPBroadcast udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_READ, mHandler);
                 udpBroadcast.setIpAddress(DeviceDetailFragment.GO_ADDRESS);
                 new Thread(udpBroadcast).start();
                 //周期性广播本机信息
@@ -94,9 +93,9 @@ public class ServerThread implements Runnable {
                     timer.schedule(new TimerTask() {
                         @Override
                         public void run() {
-                            member.setPower(BatteryReceiver.power);
-                            UDPBroadcast udpBroadcastWrite = new UDPBroadcast(0, "1", member);
-                            new Thread(udpBroadcastWrite).start();
+                        member.setPower(BatteryReceiver.power);
+                        UDPBroadcast udpBroadcastWrite = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_MEMBER, member);
+                        new Thread(udpBroadcastWrite).start();
                         }
                     }, broadcastPeriod, broadcastPeriod);
                 }
@@ -116,6 +115,10 @@ public class ServerThread implements Runnable {
                     BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(client.getOutputStream()));
                     writer.write(client.getInetAddress().getHostAddress());
                     writer.newLine();
+                    writer.write(myDevice.deviceAddress);
+                    writer.newLine();
+                    writer.write("(GO)"+myDevice.deviceName);
+                    writer.newLine();
                     writer.flush();
                     //更新tcpConnections
                     tcpConnections.put(client.getInetAddress().getHostAddress(), client);
@@ -124,17 +127,21 @@ public class ServerThread implements Runnable {
                     //加入GO的信息
                     Member groupOwner = new Member(DeviceDetailFragment.GO_ADDRESS, "(GO)"+myDevice.deviceName, myDevice.deviceAddress, BatteryReceiver.power);
                     System.out.println("看这里power："+ member.getPower());
-                    Map<String, Member> tempMap = new HashMap<>();
+
                     if(!memberMap.containsKey(myDevice.deviceAddress)){
-                        Map<String, Member> tempMapG = new HashMap<>();
-                        tempMapG.put(DeviceDetailFragment.GO_ADDRESS, groupOwner);
-                        memberMap.put(myDevice.deviceAddress, tempMapG);
+                        memberMap.put(myDevice.deviceAddress, groupOwner);
                     }
-                    tempMap.put(client.getInetAddress().getHostAddress(), member);
-                    memberMap.put(macAddress, tempMap);
+                    memberMap.put(macAddress, member);
                     Message msg = new Message();
                     msg.what = 6;
                     mHandler.sendMessage(msg);
+                    //将当前MemberMap用TCP传输给client
+                    Gson gson = new Gson();
+                    String memMapStr = gson.toJson(memberMap);
+                    writer.write(memMapStr);
+                    writer.newLine();
+                    writer.flush();
+                    //将新增加的成员广播给现有组内成员
                     UDPBroadcast udpBroadcast = new UDPBroadcast(memberMap);
                     new Thread(udpBroadcast).start();
                     System.out.println("ServerThread: "+ memberMap.size()+" " +memberMap.get(macAddress));

@@ -60,8 +60,11 @@ public class CostFunctionBasedAlgorithm {
         }
         if(optimalNetwork != null){
             Log.d(TAG, "最优切换网络："+optimalNetwork.getWifiP2pDevice().deviceName + " " +maxPEV);
-            //optimalNetwork.setGroupOwner(true);
-            //currentNetwork.setGroupOwner(false);
+            optimalNetwork.setGroupOwner(true);
+            if(currentNetwork != null){
+                currentNetwork.setGroupOwner(false);
+            }
+
             for(Entry<String, Network> entry : candidateNetwork.entrySet()){
                 if(!entry.getValue().isGroupOwner()){
                     //candidateNetwork.remove(entry.getKey());

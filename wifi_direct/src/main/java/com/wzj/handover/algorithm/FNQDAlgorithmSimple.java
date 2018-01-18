@@ -14,33 +14,6 @@ import Jama.Matrix;
  */
 
 public class FNQDAlgorithmSimple implements Runnable{
-  /*  public static void main(String[] args){
-        Map<String, Network> candidateNetwork = new HashMap<>();
-        Network currentNetwork = new Network(null, -70, 2/15.0, 0.7, 0.8, true);
-        currentNetwork.setName("a");
-        Network b = new Network(null, -15, 1/15.0, 0.8, 1, false);
-        b.setName("b");
-        Network c = new Network(null, -10, 2/15.0, 0.9, 0.8, false);
-        c.setName("c");
-        Network d = new Network(null, -20, 0, 1, 0.4, false);
-        d.setName("d");
-        candidateNetwork.put("a", currentNetwork);
-        candidateNetwork.put("b", b);
-        candidateNetwork.put("c", c);
-        candidateNetwork.put("d", d);
-        *//*for(int i=0;i<1000;i++){
-            Network network = new Network(i, -i, 0.6, 50, 0.5);
-            candidateNetwork.add(network);
-        }*//*
-        double mParameters[][] = new double[][]{{-100, -60, 0}, {0, 0.5, 1}, {0, 0.5, 1}, {0, 0.5, 1}};
-        double weights[] = new double[]{0.38, 0.17, 0.34, 0.11};
-        double t = 0.2;
-        FNQDAlgorithmSimple fnqdAlgorithm = new FNQDAlgorithmSimple(candidateNetwork, mParameters, weights, t);
-        long startTime=System.currentTimeMillis();   //获取开始时间
-        Network optimalNetwork = fnqdAlgorithm.fnqdProcess();
-        long endTime=System.currentTimeMillis(); //获取结束时间
-        System.out.println("程序运行时间： "+(endTime-startTime)+"ms");
-    }*/
     public static final String TAG = "FNQDAlgorithm";
     private Map<String, Network> candidateNetwork;
     double mParameters[][];
@@ -61,9 +34,9 @@ public class FNQDAlgorithmSimple implements Runnable{
     public Network fnqdProcess(){
         Log.d(TAG, "FNQD处理----------------------------------------------");
         Network optimalNetwork = null;
-        for(Entry<String, Network> entry : candidateNetwork.entrySet()){
+        /*for(Entry<String, Network> entry : candidateNetwork.entrySet()){
             Log.d(entry.getValue().getWifiP2pDevice().deviceName, " / " + entry.getValue().getRssi() +" / "+ entry.getValue().getLoadBalance() + " / " +entry.getValue().getBandwidth() + " / " + entry.getValue().getGroupOwnerPower());
-        }
+        }*/
         double factors[][] = new double[candidateNetwork.size()][mParameters.length];
         int count = 0;
         for(Entry<String, Network> entry : candidateNetwork.entrySet()){
@@ -73,9 +46,12 @@ public class FNQDAlgorithmSimple implements Runnable{
             factors[i] = candidateNetwork.get(i).getFactors();
         }*/
 
-        double pev[] = new double[factors.length];
+        //double pev[] = new double[factors.length];
         //FNQD核心步骤
-        for(int i = 0;i < factors.length;i++){
+        int i = 0;
+        Network currentNetwrok = null;
+        double cPEV = 0;
+        for(Entry<String, Network> entry : candidateNetwork.entrySet()){
             Log.d(TAG, "第 "+ i +" 个候选网络开始处理---------------");
             Matrix u = fuzzification(factors[i], mParameters);
             Matrix nqv = computeNQV(factors[i], mParameters);
@@ -90,12 +66,17 @@ public class FNQDAlgorithmSimple implements Runnable{
             //mqv.print(mqv.getColumnDimension(), 4);
             Matrix mWeights = new Matrix(weights, weights.length);
             //计算PEV值
-            pev[i] = (mqv.transpose()).times(mWeights).get(0,0);
-            Log.d(TAG, "计算PEV："+ pev[i]);
-            Log.d(TAG, "第 "+ i +" 个候选网络处理结束---------------");
+            entry.getValue().setPev((mqv.transpose()).times(mWeights).get(0,0));
+            Log.d(TAG, "计算PEV：" + entry.getValue().getPev());
+            if(entry.getValue().isGroupOwner()){
+                Log.d(TAG, "找到当前网络！");
+                currentNetwrok = entry.getValue();
+                cPEV = currentNetwrok.getPev();
+            }
+            Log.d(TAG, "第 "+ i++ +" 个候选网络处理结束---------------");
 
         }
-        count = 0;
+        /*count = 0;
         double cPEV = 0;
         Network currentNetwrok = null;
         for(Entry<String, Network> entry : candidateNetwork.entrySet()){
@@ -105,9 +86,9 @@ public class FNQDAlgorithmSimple implements Runnable{
                 currentNetwrok = entry.getValue();
                 //candidateNetwork.remove(entry.getKey());
                 cPEV = currentNetwrok.getPev();
-                Log.d(TAG, "找到当前网络："+currentNetwrok.getWifiP2pDevice().deviceName+"/"+cPEV);
+                //Log.d(TAG, "找到当前网络："+currentNetwrok.getWifiP2pDevice().deviceName+"/"+cPEV);
             }
-        }
+        }*/
         /*for(int i = 0;i<candidateNetwork.size();i++){
             candidateNetwork.get(i).setPev(pev[i]);
         }*/

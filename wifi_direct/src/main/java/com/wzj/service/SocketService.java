@@ -7,6 +7,8 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.support.annotation.Nullable;
 
+import com.wzj.bean.TCPMember;
+
 import java.net.Socket;
 import java.util.Map;
 
@@ -17,7 +19,7 @@ import java.util.Map;
 //用于向ChatActivity传递Socket对象。通过绑定该service，在DeviceDetailFragment中传入socket对象，在ChatActivity中读出。
 public class SocketService extends Service {
     private Socket socket;
-    private Map<String, Socket> tcpConnections;
+    private Map<String, TCPMember> tcpConnections;
     private Handler handler;
     private IBinder mBinder = new MBinder();
 
@@ -55,11 +57,11 @@ public class SocketService extends Service {
         this.handler = handler;
     }
 
-    public Map<String, Socket> getTcpConnections() {
+    public Map<String, TCPMember> getTcpConnections() {
         return tcpConnections;
     }
 
-    public void setTcpConnections(Map<String, Socket> tcpConnections) {
+    public void setTcpConnections(Map<String, TCPMember> tcpConnections) {
         this.tcpConnections = tcpConnections;
     }
 }
