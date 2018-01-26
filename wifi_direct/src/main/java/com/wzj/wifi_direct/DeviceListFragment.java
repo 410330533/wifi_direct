@@ -62,7 +62,6 @@ public class DeviceListFragment extends ListFragment implements WifiP2pManager.P
         mContentView.findViewById(R.id.create_group).setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
-                DeviceDetailFragment.preGroupSize = 0;
                 ((DeviceActionListener)getActivity()).createGroup();
             }
         });

@@ -5,7 +5,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
-import android.net.wifi.WifiManager.MulticastLock;
 import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pManager;
@@ -56,7 +55,8 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
             WifiP2pManager.DnsSdServiceResponseListener, WifiP2pManager.DnsSdTxtRecordListener{
 
     public static final String TAG = "WifiDirectDemo";
-    private WifiP2pManager manager;
+    private WifiP2pManager wifiP2pManager;
+    private WifiManager wifiManager;
     private boolean isWifiP2pEnabled = false;
     private boolean retryChannel = false;
     private boolean isGroupOwner = false;
@@ -68,8 +68,10 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     private int groupSize;
     private final IntentFilter intentFilter  = new IntentFilter();
     private final IntentFilter batteryIntentFilter  = new IntentFilter();
+    private final IntentFilter wiFiIntentFilter  = new IntentFilter();
     private WifiP2pManager.Channel channel;
-    private WiFiDirectBroadcastReceiver receiver = null;
+    private WiFiDirectBroadcastReceiver wiFiDirectBroadcastReceiver;
+    private WiFiBroadcastReceiver wiFiBroadcastReceiver;
     private BatteryReceiver batteryReceiver = null;
     private static final int CPU_COUNT = Runtime.getRuntime().availableProcessors();
     public static ThreadPoolExecutor threadPoolExecutor;
@@ -80,7 +82,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     private Map<String, Member> lastMembers = new HashMap<>();
     private boolean autoConnect = false;
     private WifiP2pConfig wifiP2pConfig = null;
-    private MulticastLock multicastLock;
+    //private MulticastLock multicastLock;
 
     public boolean getGroupOwnerFind() {
         return groupOwnerFind;
@@ -105,7 +107,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     }
 
     public WiFiDirectBroadcastReceiver getReceiver() {
-        return receiver;
+        return wiFiDirectBroadcastReceiver;
     }
 
     @Override
@@ -124,9 +126,11 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION);
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION);
         batteryIntentFilter.addAction(Intent.ACTION_BATTERY_CHANGED);
+        wiFiIntentFilter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
 
-        manager = (WifiP2pManager)getSystemService(Context.WIFI_P2P_SERVICE);
-        channel = manager.initialize(this, getMainLooper(), null);
+        wifiP2pManager = (WifiP2pManager)getSystemService(Context.WIFI_P2P_SERVICE);
+        wifiManager = (WifiManager)getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        channel = wifiP2pManager.initialize(this, getMainLooper(), null);
 
         if(null == threadPoolExecutor || threadPoolExecutor.isTerminated()){
             threadPoolExecutor = new ThreadPoolExecutor(CPU_COUNT + 1, CPU_COUNT*2 + 1, 1, TimeUnit.SECONDS, new LinkedBlockingDeque<Runnable>(128));
@@ -153,18 +157,20 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     @Override
     protected void onResume() {
         super.onResume();
-        receiver = new WiFiDirectBroadcastReceiver(manager, channel, this);
+        wiFiDirectBroadcastReceiver = new WiFiDirectBroadcastReceiver(wifiP2pManager, channel, this);
         batteryReceiver = new BatteryReceiver(this);
-        registerReceiver(receiver, intentFilter);
+        wiFiBroadcastReceiver = new WiFiBroadcastReceiver(wifiManager, this);
+        registerReceiver(wiFiDirectBroadcastReceiver, intentFilter);
         registerReceiver(batteryReceiver, batteryIntentFilter);
+        registerReceiver(wiFiBroadcastReceiver, wiFiIntentFilter);
         //resume时扫描可用设备
-        if(manager != null){
-            manager.requestPeers(channel, (WifiP2pManager.PeerListListener)this.
+        if(wifiP2pManager != null){
+            wifiP2pManager.requestPeers(channel, (WifiP2pManager.PeerListListener)this.
                     getFragmentManager().findFragmentById(R.id.frag_list));
             Log.d(WiFiDirectActivity.TAG, "requestPeers while resume");
         }
 
-        manager.discoverPeers(channel, new ActionListener(){
+        wifiP2pManager.discoverPeers(channel, new ActionListener(){
             @Override
             public void onSuccess() {
                 Toast.makeText(WiFiDirectActivity.this, "Discovery Initiated",
@@ -206,12 +212,15 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     @Override
     protected void onPause() {
         super.onPause();
-        unregisterReceiver(receiver);
+        unregisterReceiver(wiFiDirectBroadcastReceiver);
         unregisterReceiver(batteryReceiver);
+        unregisterReceiver(wiFiBroadcastReceiver);
+
     }
 
     @Override
     protected void onDestroy() {
+        super.onDestroy();
         Log.d(TAG, "清理当前所有service");
         this.removeServices();
         Log.d(TAG, "终止线程池");
@@ -229,7 +238,8 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         this.candidateNetworks.clear();
         /*Log.d(TAG, "关闭muiticastlock");
         this.multicastLock.release();*/
-        super.onDestroy();
+
+
 
     }
 
@@ -276,7 +286,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()){
             case R.id.atn_direct_enable:
-                if(manager != null && channel !=null){
+                if(wifiP2pManager != null && channel !=null){
                     // Since this is the system wireless settings activity, it's
                     // not going to send us a result. We will be notified by
                     // WiFiDeviceBroadcastReceiver instead.
@@ -297,7 +307,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
                 //An initiated discovery request from an application stays active until the device starts connecting to a peer ,
                 //forms a p2p group or there is an explicit stopPeerDiscovery(WifiP2pManager.Channel, WifiP2pManager.ActionListener).
                 fragment.onInitiateDiscovery();
-                manager.discoverPeers(channel, new ActionListener(){
+                wifiP2pManager.discoverPeers(channel, new ActionListener(){
                     @Override
                     public void onSuccess() {
                         Toast.makeText(WiFiDirectActivity.this, "Discovery Initiated",
@@ -331,7 +341,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         WifiP2pConfig wifiP2pConfig = fragment.connect();
         if(wifiP2pConfig != null){
             //candidateNetworks.clear();
-            manager.connect(channel, wifiP2pConfig, new ActionListener() {
+            wifiP2pManager.connect(channel, wifiP2pConfig, new ActionListener() {
                 @Override
                 public void onSuccess() {
                     // WiFiDirectBroadcastReceiver will notify us. Ignore for now.
@@ -351,7 +361,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
 
         if(wifiP2pConfig != null){
             //candidateNetworks.clear();
-            manager.connect(channel, wifiP2pConfig, new ActionListener() {
+            wifiP2pManager.connect(channel, wifiP2pConfig, new ActionListener() {
                 @Override
                 public void onSuccess() {
                     // WiFiDirectBroadcastReceiver will notify us. Ignore for now.
@@ -402,7 +412,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
 
         final DeviceDetailFragment fragment = (DeviceDetailFragment)getFragmentManager()
                 .findFragmentById(R.id.frag_detail);
-        manager.removeGroup(channel, new ActionListener() {
+        wifiP2pManager.removeGroup(channel, new ActionListener() {
             @Override
             public void onSuccess() {
                 if(fragment.getView() != null){
@@ -420,11 +430,11 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     @Override
     public void onChannelDisconnected() {
         // we will try once more
-        if(manager != null && !retryChannel){
+        if(wifiP2pManager != null && !retryChannel){
             Toast.makeText(this, "Channel lost. Trying again", Toast.LENGTH_SHORT).show();
             resetData();
             retryChannel = true;
-            manager.initialize(this, getMainLooper(), this);
+            wifiP2pManager.initialize(this, getMainLooper(), this);
         }else {
             Toast.makeText(this, "Severe! Channel is probably lost premanently. Try Disable/Re-Enable P2P.",
                     Toast.LENGTH_SHORT).show();
@@ -432,7 +442,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     }
     public void cancel(){
         Log.d(TAG,"取消连接！");
-        manager.cancelConnect(channel, new ActionListener() {
+        wifiP2pManager.cancelConnect(channel, new ActionListener() {
             @Override
             public void onSuccess() {
                 Toast.makeText(WiFiDirectActivity.this, "Aborting connection",
@@ -456,16 +466,16 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         DeviceDetailFragment detailFragment = (DeviceDetailFragment)getFragmentManager()
                 .findFragmentById(R.id.frag_detail);
         detailFragment.disconnect();
-        if(manager != null){
+        if(wifiP2pManager != null){
             final DeviceListFragment fragment = (DeviceListFragment)getFragmentManager()
                     .findFragmentById(R.id.frag_list);
             //已经连接上，建立了组 removeGroup()
             if(fragment.getDevice() == null || fragment.getDevice().status == WifiP2pDevice.CONNECTED){
                 removeGroup();
-
+                detailFragment.setIsGO(false);
                 //未建立组，处于协商阶段 cancelConnect()
             }else if (fragment.getDevice().status == WifiP2pDevice.INVITED){
-                manager.cancelConnect(channel, new ActionListener() {
+                wifiP2pManager.cancelConnect(channel, new ActionListener() {
                     @Override
                     public void onSuccess() {
                         Toast.makeText(WiFiDirectActivity.this, "Aborting connection",
@@ -501,7 +511,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
             this.connect(config);
         }*/
         //currentTime = System.currentTimeMillis();
-        manager.createGroup(channel, new ActionListener() {
+        wifiP2pManager.createGroup(channel, new ActionListener() {
             @Override
             public void onSuccess() {
                 Toast.makeText(WiFiDirectActivity.this, "Create group successfully!", Toast.LENGTH_SHORT).show();
@@ -526,7 +536,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
 
     @Override
     public void stopDiscovery() {
-        manager.stopPeerDiscovery(channel, new ActionListener() {
+        wifiP2pManager.stopPeerDiscovery(channel, new ActionListener() {
             @Override
             public void onSuccess() {
                 Toast.makeText(WiFiDirectActivity.this, "Stop discovery!", Toast.LENGTH_SHORT).show();
@@ -560,7 +570,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     public int getRSSI(String regrex){
         int rssi = -100;
         if(!("").equals(regrex)){
-            WifiManager wifiManager = (WifiManager)getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             wifiManager.startScan();
             List<ScanResult> scanResults = wifiManager.getScanResults();
             Pattern pattern = Pattern.compile(regrex);
@@ -582,7 +591,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         return rssi;
     }
     public void publishServices(){
-        MulticastThread multicastThread = new MulticastThread();
+        MulticastThread multicastThread = new MulticastThread(this, MulticastThread.MULTICAST_WRITE, MulticastThread.GM_MULTICAST_DETECT, MulticastThread.P2P_INTERFACE_REGREX);
         new Thread(multicastThread).start();
 
        /* manager.setDnsSdResponseListeners(channel, this, this);
@@ -634,11 +643,11 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     }
 
     public void removeServices(){
-        manager.clearLocalServices(channel, new ActionListener() {
+        wifiP2pManager.clearLocalServices(channel, new ActionListener() {
             @Override
             public void onSuccess() {
                 Log.d("WiFiP2pService", "清理service成功");
-                manager.clearServiceRequests(channel, new ActionListener() {
+                wifiP2pManager.clearServiceRequests(channel, new ActionListener() {
                     @Override
                     public void onSuccess() {
                         Log.d("WiFiP2pService", "清理service request成功！");
@@ -748,7 +757,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
     }
 
     public WifiP2pManager getManager() {
-        return manager;
+        return wifiP2pManager;
     }
 
     public Channel getChannel() {
@@ -808,5 +817,13 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
 
     public void setMemberServiceDiscovery(boolean memberServiceDiscovery) {
         this.memberServiceDiscovery = memberServiceDiscovery;
+    }
+
+    public WifiManager getWifiManager() {
+        return wifiManager;
+    }
+
+    public WiFiBroadcastReceiver getWiFiBroadcastReceiver() {
+        return wiFiBroadcastReceiver;
     }
 }

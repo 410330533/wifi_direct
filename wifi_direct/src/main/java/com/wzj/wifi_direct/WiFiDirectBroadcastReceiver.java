@@ -83,6 +83,7 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
                 return;
             }
             NetworkInfo networkInfo = (NetworkInfo) intent.getParcelableExtra(WifiP2pManager.EXTRA_NETWORK_INFO);
+            DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment)activity.getFragmentManager().findFragmentById(R.id.frag_detail);
             //设置isConnected给DeviceListFragment,防止整个页面被重置
             this.setConnected(networkInfo.isConnected());
             activity.setIsConnected(networkInfo.isConnected());
@@ -102,15 +103,15 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
                     listFragment.getAutoConnectTimer().cancel();
                     listFragment.setAutoConnectTimer(null);
                 }
-            }else{
+            }else if(!networkInfo.isConnected() && !deviceDetailFragment.isGO()){
                 //当电量低时执行组内切换
-                DeviceDetailFragment detailFragment = (DeviceDetailFragment) activity.getFragmentManager().findFragmentById(R.id.frag_detail);
+
                 /*if(lowPower && activity.getIsGroupOwner()){
                     //组主组内切换
                     Log.d("WFDBroadcastReceiver", "组主组内切换");
                     this.handoverWithinGroup();
                 }else*/
-                Map<String, Member> memberMap = detailFragment.getMemberMap();
+                Map<String, Member> memberMap = deviceDetailFragment.getMemberMap();
                 //从MemberMap中得到groupowner
                 //组内切换
                 /*if(!activity.getIsGroupOwner() &&  memberMap != null && memberMap.get(activity.getGroupOwnerMac()) != null){
@@ -123,7 +124,7 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
 
                 }*/
                 activity.resetData();
-                detailFragment.closeConnections();
+                deviceDetailFragment.closeConnections();
                 //开启组员监听线程
                 if(activity.getMemberParametersCollection() == null){
                     MemberParametersCollection memberParametersCollection = new MemberParametersCollection(activity, manager, channel);
@@ -138,10 +139,10 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
                     Log.d("WFDBroadcastReceiver", "关闭组主监听线程！！！");
                 }
                 //重置定时器
-                if(detailFragment.getTimer()!=null){
-                    detailFragment.getTimer().cancel();
-                    detailFragment.setTimer(null);
-                    detailFragment.setComputeBandwidth(null);
+                if(deviceDetailFragment.getTimer()!=null){
+                    deviceDetailFragment.getTimer().cancel();
+                    deviceDetailFragment.setTimer(null);
+                    deviceDetailFragment.setComputeBandwidth(null);
                 }
                 Log.d(WiFiDirectActivity.TAG, "disconnection");
                 if(autoCreate){
@@ -150,7 +151,7 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
                     timer.schedule(new TimerTask() {
                         @Override
                         public void run() {
-                            DeviceDetailFragment.preGroupSize = 0;
+                            //DeviceDetailFragment.preGroupSize = 0;
                             activity.createGroup();
                             autoCreate = false;
                         }

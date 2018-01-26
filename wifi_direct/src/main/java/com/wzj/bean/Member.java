@@ -8,6 +8,9 @@ public class Member {
     private String ipAddress;
     private String deviceName;
     private String macAddress;
+    private String macAddressofRelay;
+    private char sentInterface;
+    private Boolean isCurrentGroup = true;
     private float power;
     //private Socket socket = null;
 
@@ -59,7 +62,32 @@ public class Member {
     public void setPower(float power) {
         this.power = power;
     }
-/*
+
+    public String getMacAddressofRelay() {
+        return macAddressofRelay;
+    }
+
+    public void setMacAddressofRelay(String macAddressofRelay) {
+        this.macAddressofRelay = macAddressofRelay;
+    }
+
+    public Boolean getisCurrentGroup() {
+        return isCurrentGroup;
+    }
+
+    public void setisCurrentGroup(Boolean currentGroup) {
+        isCurrentGroup = currentGroup;
+    }
+
+    public char getSentInterface() {
+        return sentInterface;
+    }
+
+    public void setSentInterface(char sentInterface) {
+        this.sentInterface = sentInterface;
+    }
+
+    /*
     public Socket getSocket() {
         return socket;
     }
