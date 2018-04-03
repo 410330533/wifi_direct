@@ -66,6 +66,7 @@ public class ChatActivity extends AppCompatActivity {
     };
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
         mhandler = new Handler(){
             @Override
             public void handleMessage(Message msg) {

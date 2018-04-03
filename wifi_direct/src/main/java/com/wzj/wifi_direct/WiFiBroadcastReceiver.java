@@ -43,7 +43,7 @@ public class WiFiBroadcastReceiver extends BroadcastReceiver {
                         (intIPAddress >> 24 & 0xff));
                 Log.d(TAG, ssid +"/"+ ipAddress);
                 String ssidRegrex = "^\"DIRECT-[a-zA-Z 0-9]+-[a-zA-Z _0-9]+\"";
-                String ipRegrex = "^192.168.49.[1-9]+";
+                String ipRegrex = "^192.168.49.[0-9]+";
                 Pattern ssidPattern = Pattern.compile(ssidRegrex);
                 Matcher ssidMatcher = ssidPattern.matcher(ssid);
                 Pattern ipPattern = Pattern.compile(ipRegrex);

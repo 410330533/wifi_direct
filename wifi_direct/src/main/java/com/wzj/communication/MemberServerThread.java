@@ -191,34 +191,102 @@ public class MemberServerThread implements Runnable {
                                 msg.setData(bundle);
                                 mHandler.sendMessage(msg);
                             }else if(member.getisCurrentGroup()){
+                                //分组主与组员两种情况
                                 Log.d(TAG, "目标设备在本组内");
                                 String choiceIp = member.getIpAddress();
                                 Socket client = tcpConnections.get(choiceIp);
-                                if(client == null){
-                                    client = new Socket();
-                                    client.connect(new InetSocketAddress(choiceIp, DeviceDetailFragment.MS_PORT));
-                                    MSRead clientRead = new MSRead(wiFiDirectActivity, client);
-                                    new Thread(clientRead).start();
-                                    tcpConnections.put(client.getInetAddress().getHostAddress(), client);
-                                }
-                                DataOutputStream dataOutputStream = new DataOutputStream(client.getOutputStream());
-                                DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
+                                if(deviceDetailFragment.isGO()){
+                                    if(client != null){
+                                        DataOutputStream dataOutputStream = new DataOutputStream(client.getOutputStream());
+                                        DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
 
-                                long totalLength = flag;
-                                dataOutputStream.writeLong(totalLength);
-                                byte buf[] = new byte[1024];
-                                int length;
-                                int fileLength = 0;
-                                while (fileLength < totalLength) {
-                                    length = dataInputStream.read(buf);
-                                    dataOutputStream.write(buf, 0, length);
-                                    fileLength += length;
+                                        long totalLength = flag;
+                                        dataOutputStream.writeLong(totalLength);
+                                        byte buf[] = new byte[1024];
+                                        int length;
+                                        int fileLength = 0;
+                                        while (fileLength < totalLength) {
+                                            length = dataInputStream.read(buf);
+                                            dataOutputStream.write(buf, 0, length);
+                                            fileLength += length;
+                                        }
+                                        dataOutputStream.flush();
+                                        Log.d(TAG, "组间通信：客户端写入完毕");
+                                        Message msg = new Message();
+                                        msg.what = 2;
+                                        mHandler.sendMessage(msg);
+
+                                    }else {
+                                        Socket relayClient = null;
+                                        Map<String, Member> currentMemberMap = deviceDetailFragment.getMemberNode().getCurrentGroupMemberMap();
+                                        for(Member m : currentMemberMap.values()){
+                                            if((relayClient = tcpConnections.get(m.getIpAddress())) != null && !relayClient.isClosed()){
+                                                //relayNode的选择，不要选前一个组中的组员，应选本组中的组员
+                                                Log.d(TAG, "MS选择RelyClient - "+relayClient.getInetAddress().getHostAddress());
+                                                break;
+                                            }
+                                        }
+                                        /*for(Entry<String, Socket> entry : tcpConnections.entrySet()){
+                                            if(entry.getValue() != null && !entry.getValue().isClosed()){
+
+                                                relayClient = entry.getValue();
+                                                Log.d(TAG, "MS选择RelyClient - "+relayClient.getInetAddress().getHostAddress());
+                                                break;
+                                            }
+                                        }*/
+
+                                        DataOutputStream dataOutputStream = new DataOutputStream(relayClient.getOutputStream());
+                                        DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
+
+                                        long type = StringToLong.transfer("Relaynod");
+                                        long totalLength = flag;
+                                        dataOutputStream.writeLong(type);
+                                        dataOutputStream.writeLong(totalLength);
+                                        dataOutputStream.writeBytes(mac);
+
+                                        byte buf[] = new byte[1024];
+                                        int length;
+                                        int fileLength = 0;
+                                        while (fileLength < totalLength) {
+                                            length = dataInputStream.read(buf);
+                                            dataOutputStream.write(buf, 0, length);
+                                            fileLength += length;
+                                        }
+                                        dataOutputStream.flush();
+                                        Log.d(TAG, "MS组间通信：客户端写入完毕");
+                                        Message msg = new Message();
+                                        msg.what = 2;
+                                        mHandler.sendMessage(msg);
+                                    }
+                                }else {
+                                    if(client == null){
+                                        client = new Socket();
+                                        client.connect(new InetSocketAddress(choiceIp, DeviceDetailFragment.MS_PORT));
+                                        MSRead clientRead = new MSRead(wiFiDirectActivity, client);
+                                        new Thread(clientRead).start();
+                                        tcpConnections.put(client.getInetAddress().getHostAddress(), client);
+                                    }
+
+                                    DataOutputStream dataOutputStream = new DataOutputStream(client.getOutputStream());
+                                    DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
+
+                                    long totalLength = flag;
+                                    dataOutputStream.writeLong(totalLength);
+                                    byte buf[] = new byte[1024];
+                                    int length;
+                                    int fileLength = 0;
+                                    while (fileLength < totalLength) {
+                                        length = dataInputStream.read(buf);
+                                        dataOutputStream.write(buf, 0, length);
+                                        fileLength += length;
+                                    }
+                                    dataOutputStream.flush();
+                                    Log.d(TAG, "组间通信：客户端写入完毕");
+                                    Message msg = new Message();
+                                    msg.what = 2;
+                                    mHandler.sendMessage(msg);
+
                                 }
-                                dataOutputStream.flush();
-                                Log.d(TAG, "组间通信：客户端写入完毕");
-                                Message msg = new Message();
-                                msg.what = 2;
-                                mHandler.sendMessage(msg);
 
                             }else if(memberMap.containsKey(mac)){
                                 Log.d(TAG, "目标设备不在本组内，继续relay");

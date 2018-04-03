@@ -13,6 +13,8 @@ import java.util.regex.Pattern;
  */
 
 public class AddressObtain {
+    private static String mMACofWiFi;
+    private static String mMACofP2P;
     public static String getWlanIPAddress(){
         String address = "";
         return address;
@@ -24,45 +26,54 @@ public class AddressObtain {
     }
 
     public static String getWlanMACAddress(){
-        String address = "";
-        try {
-            Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
-            String regrex = "^wlan";
-            Pattern pattern = Pattern.compile(regrex);
-            while(networkInterfaces.hasMoreElements()){
-                NetworkInterface networkInterface = networkInterfaces.nextElement();
-                Matcher matcher = pattern.matcher(networkInterface.getName());
-                if(matcher.find()){
-                    address = getMacFromBytes(networkInterface.getHardwareAddress());
-                    Log.d("NetworkInterface", "匹配/"+networkInterface.getName()+"/"+ address);
-                    break;
+        if(mMACofWiFi == null){
+            try {
+                Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
+                String regrex = "^wlan";
+                Pattern pattern = Pattern.compile(regrex);
+                while(networkInterfaces.hasMoreElements()){
+                    NetworkInterface networkInterface = networkInterfaces.nextElement();
+                    Matcher matcher = pattern.matcher(networkInterface.getName());
+                    if(matcher.find()){
+                       mMACofWiFi = getMacFromBytes(networkInterface.getHardwareAddress());
+                        Log.d("NetworkInterface", "匹配/"+networkInterface.getName()+"/"+ mMACofWiFi);
+                        break;
+                    }
                 }
+            } catch (SocketException e) {
+                e.printStackTrace();
             }
-        } catch (SocketException e) {
-            e.printStackTrace();
+            return mMACofWiFi;
+        }else {
+            return mMACofWiFi;
         }
-        return address;
+
+
     }
 
     public static String getP2pMACAddress(){
-        String address = "";
-        try {
-            Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
-            String regrex = "^p2p";
-            Pattern pattern = Pattern.compile(regrex);
-            while(networkInterfaces.hasMoreElements()){
-                NetworkInterface networkInterface = networkInterfaces.nextElement();
-                Matcher matcher = pattern.matcher(networkInterface.getName());
-                if(matcher.find()){
-                    address = getMacFromBytes(networkInterface.getHardwareAddress());
-                    Log.d("NetworkInterface", "匹配/"+networkInterface.getName()+"/"+ address);
-                    break;
+        if(mMACofP2P == null){
+            try {
+                Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
+                String regrex = "^p2p";
+                Pattern pattern = Pattern.compile(regrex);
+                while(networkInterfaces.hasMoreElements()){
+                    NetworkInterface networkInterface = networkInterfaces.nextElement();
+                    Matcher matcher = pattern.matcher(networkInterface.getName());
+                    if(matcher.find()){
+                        mMACofP2P = getMacFromBytes(networkInterface.getHardwareAddress());
+                        Log.d("NetworkInterface", "匹配/"+networkInterface.getName()+"/"+ mMACofP2P);
+                        break;
+                    }
                 }
+            } catch (SocketException e) {
+                e.printStackTrace();
             }
-        } catch (SocketException e) {
-            e.printStackTrace();
+            return mMACofP2P;
+        }else {
+            return mMACofP2P;
         }
-        return address;
+
     }
 
     private static String getMacFromBytes(byte[] macBytes) {

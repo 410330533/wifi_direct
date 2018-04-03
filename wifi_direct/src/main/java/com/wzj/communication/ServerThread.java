@@ -11,6 +11,7 @@ import android.util.Log;
 
 import com.google.gson.Gson;
 import com.wzj.bean.Member;
+import com.wzj.bean.Node;
 import com.wzj.util.AddressObtain;
 import com.wzj.util.GetPath;
 import com.wzj.util.StringToLong;
@@ -41,7 +42,6 @@ import java.util.TimerTask;
 import static com.wzj.communication.MulticastThread.GO_MULTICAST_MEMMAP;
 import static com.wzj.communication.MulticastThread.MULTICAST_WRITE;
 import static com.wzj.communication.MulticastThread.P2P_INTERFACE_REGREX;
-import static com.wzj.communication.MulticastThread.TAG;
 import static com.wzj.communication.MulticastThread.WLAN_INTERFACE_REGREX;
 
 /**
@@ -49,6 +49,7 @@ import static com.wzj.communication.MulticastThread.WLAN_INTERFACE_REGREX;
  */
 //ServerWrite目前并未使用，写操作都通过ClientWrite实现
 public class ServerThread implements Runnable {
+    public static final String TAG = "ServerThread";
     private WiFiDirectActivity wiFiDirectActivity;
     private static ServerSocket serverSocket;
     private int count = 1;
@@ -86,7 +87,7 @@ public class ServerThread implements Runnable {
         this.uri = uri;
     }
 
-    public void memberMapPut(String key, Member value){
+    /*public void memberMapPut(String key, Member value){
         DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment) wiFiDirectActivity.getFragmentManager().findFragmentById(R.id.frag_detail);
         if(deviceDetailFragment.getCurrentGroupMemberMap().containsKey(key)){
             memberMap.put(key, value);
@@ -94,7 +95,7 @@ public class ServerThread implements Runnable {
         }else {
             memberMap.put(key, value);
         }
-    }
+    }*/
 
     @Override
     public void run() {
@@ -126,7 +127,6 @@ public class ServerThread implements Runnable {
                     broadcastMemTimer.schedule(new TimerTask() {
                         @Override
                         public void run() {
-                            DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment)wiFiDirectActivity.getFragmentManager().findFragmentById(R.id.frag_detail);
                             UDPBroadcast udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_MEMMAP, memberMap);
                             new Thread(udpBroadcast).start();
                             /*UDPBroadcast udpBroadcastCurrentMemMap = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_CURRENT_MEMMAP, deviceDetailFragment.getCurrentGroupMemberMap());
@@ -140,7 +140,17 @@ public class ServerThread implements Runnable {
                         @Override
                         public void run() {
                             DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment)wiFiDirectActivity.getFragmentManager().findFragmentById(R.id.frag_detail);
-                            if(deviceDetailFragment.getOtherGroupMemberMap().size() == 0 && memberMap.size() != 0){
+                            if(deviceDetailFragment != null){
+                                Node memberNode = deviceDetailFragment.getMemberNode();
+                                if(memberNode != null){
+                                    Map<String, Member> currentGroupMemberMap = deviceDetailFragment.getMemberNode().getCurrentGroupMemberMap();
+                                    Log.d(TAG, "p2p组播currentGroupMemberMap");
+                                    MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, P2P_INTERFACE_REGREX, currentGroupMemberMap, myDevice.deviceAddress);
+                                    new Thread(multicastThread).start();
+                                }
+                            }
+
+                            /*if(deviceDetailFragment.getOtherGroupMemberMap().size() == 0 && memberMap.size() != 0){
                                 Log.d(TAG, "p2p组播memberMap");
                                 MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, P2P_INTERFACE_REGREX, memberMap, myDevice.deviceAddress);
                                 new Thread(multicastThread).start();
@@ -148,7 +158,7 @@ public class ServerThread implements Runnable {
                                 Log.d(TAG, "p2p组播currentGroupMemberMap");
                                 MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, P2P_INTERFACE_REGREX, deviceDetailFragment.getCurrentGroupMemberMap(), myDevice.deviceAddress);
                                 new Thread(multicastThread).start();
-                            }
+                            }*/
                         }
                     }, 0, broadcastPeriod);
                     if(wiFiDirectActivity.getWiFiBroadcastReceiver().isWFDConnected()){
@@ -184,13 +194,17 @@ public class ServerThread implements Runnable {
                     //加入GO的信息
                     Member groupOwner = new Member(DeviceDetailFragment.GO_ADDRESS, "(GO)"+myDevice.deviceName, myDevice.deviceAddress, BatteryReceiver.power);
                     System.out.println("看这里power："+ member.getPower());
-
+                    DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment) wiFiDirectActivity.getFragmentManager().findFragmentById(R.id.frag_detail);
                     if(!memberMap.containsKey(myDevice.deviceAddress)){
-                        DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment) wiFiDirectActivity.getFragmentManager().findFragmentById(R.id.frag_detail);
                         memberMap.put(myDevice.deviceAddress, groupOwner);
-                        deviceDetailFragment.getCurrentGroupMemberMap().put(myDevice.deviceAddress, groupOwner);
+                        deviceDetailFragment.getMemberNode().setmData(groupOwner);
+                        //deviceDetailFragment.getCurrentGroupMemberMap().put(myDevice.deviceAddress, groupOwner);
                     }
-                    memberMapPut(macAddress, member);
+                    memberMap.put(macAddress, member);
+                    deviceDetailFragment = (DeviceDetailFragment) wiFiDirectActivity.getFragmentManager().findFragmentById(R.id.frag_detail);
+                    deviceDetailFragment.getMemberNode().addNode(new Node(member));
+
+
                     Message msg = new Message();
                     msg.what = 6;
                     mHandler.sendMessage(msg);
@@ -208,8 +222,14 @@ public class ServerThread implements Runnable {
                     new Thread(udpBroadcast).start();
 
                     //组播
-                    DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment)wiFiDirectActivity.getFragmentManager().findFragmentById(R.id.frag_detail);
-                    if(deviceDetailFragment.getOtherGroupMemberMap().size() == 0){
+                    Map<String, Member> currentGroupMemberMap = deviceDetailFragment.getMemberNode().getCurrentGroupMemberMap();
+                    Log.d(TAG, "p2p/wlan组播CurrentMemberMap");
+                    MulticastThread multicastWlanThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, WLAN_INTERFACE_REGREX, currentGroupMemberMap, myDevice.deviceAddress);
+                    new Thread(multicastWlanThread).start();
+                    MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, P2P_INTERFACE_REGREX, currentGroupMemberMap, myDevice.deviceAddress);
+                    new Thread(multicastThread).start();
+
+                    /*if(deviceDetailFragment.getOtherGroupMemberMap().size() == 0){
                         Log.d(TAG, "p2p/wlan组播memberMap");
                         MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, P2P_INTERFACE_REGREX, memberMap, myDevice.deviceAddress);
                         new Thread(multicastThread).start();
@@ -217,12 +237,12 @@ public class ServerThread implements Runnable {
                         new Thread(multicastWlanThread).start();
                     }else {
                         Log.d(TAG, "p2p/wlan组播currentGroupMemberMap");
-                        MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, P2P_INTERFACE_REGREX, deviceDetailFragment.getCurrentGroupMemberMap(), myDevice.deviceAddress);
+                        MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, WLAN_INTERFACE_REGREX, deviceDetailFragment.getCurrentGroupMemberMap(), myDevice.deviceAddress);
                         new Thread(multicastThread).start();
                         MulticastThread multicastP2pThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, P2P_INTERFACE_REGREX, deviceDetailFragment.getCurrentGroupMemberMap(), myDevice.deviceAddress);
                         new Thread(multicastP2pThread).start();
 
-                    }
+                    }*/
 
 
                     //再次广播
@@ -451,31 +471,61 @@ public class ServerThread implements Runnable {
                                 //组主选择RelayClient
                                 //...
                                 //...
-                                String macAddressofRelay = member.getMacAddressofRelay();
-                                String choiceIp = memberMap.get(macAddressofRelay).getIpAddress();
-                                Socket client = tcpConnections.get(choiceIp);
-                                DataOutputStream dataOutputStream = new DataOutputStream(client.getOutputStream());
-                                DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
+                                if(tcpConnections.containsKey(memberMap.get(mac).getIpAddress())){
+                                    //直接交付
+                                    Socket client = tcpConnections.get(memberMap.get(mac).getIpAddress());
+                                    DataOutputStream dataOutputStream = new DataOutputStream(client.getOutputStream());
+                                    DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
+                                    long totalLength = flag;
+                                    dataOutputStream.writeLong(totalLength);
+                                    byte buf[] = new byte[1024];
+                                    int length;
+                                    int fileLength = 0;
+                                    while (fileLength < totalLength) {
+                                        length = dataInputStream.read(buf);
+                                        dataOutputStream.write(buf, 0, length);
+                                        fileLength += length;
+                                    }
+                                    dataOutputStream.flush();
+                                    Log.d(TAG, "组间通信：客户端写入完毕");
+                                    Message msg = new Message();
+                                    msg.what = 2;
+                                    mHandler.sendMessage(msg);
+                                }else {
+                                    String macAddressofRelay = member.getMacAddressofRelay();
+                                    //String choiceIp = memberMap.get(macAddressofRelay).getIpAddress();
+                                    Socket client = null;
+                                    //在tcpConnections中找到MACofRelay设备的孩子节点
+                                    Map<String, Node> children = deviceDetailFragment.getMemberNode().findNode(macAddressofRelay).getmChildren();
+                                    for(String sMAC : children.keySet()){
+                                        client = tcpConnections.get(memberMap.get(sMAC).getIpAddress());
+                                        if(client != null){
+                                            break;
+                                        }
+                                    }
+                                    DataOutputStream dataOutputStream = new DataOutputStream(client.getOutputStream());
+                                    DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
 
-                                long type = StringToLong.transfer("Relaynod");
-                                long totalLength = flag;
-                                dataOutputStream.writeLong(type);
-                                dataOutputStream.writeLong(totalLength);
-                                dataOutputStream.writeBytes(mac);
+                                    long type = StringToLong.transfer("Relaynod");
+                                    long totalLength = flag;
+                                    dataOutputStream.writeLong(type);
+                                    dataOutputStream.writeLong(totalLength);
+                                    dataOutputStream.writeBytes(mac);
 
-                                byte buf[] = new byte[1024];
-                                int length;
-                                int fileLength = 0;
-                                while (fileLength < totalLength) {
-                                    length = dataInputStream.read(buf);
-                                    dataOutputStream.write(buf, 0, length);
-                                    fileLength += length;
+                                    byte buf[] = new byte[1024];
+                                    int length;
+                                    int fileLength = 0;
+                                    while (fileLength < totalLength) {
+                                        length = dataInputStream.read(buf);
+                                        dataOutputStream.write(buf, 0, length);
+                                        fileLength += length;
+                                    }
+                                    dataOutputStream.flush();
+                                    Log.d(TAG, "组间通信：客户端写入完毕");
+                                    Message msg = new Message();
+                                    msg.what = 2;
+                                    mHandler.sendMessage(msg);
                                 }
-                                dataOutputStream.flush();
-                                Log.d(TAG, "组间通信：客户端写入完毕");
-                                Message msg = new Message();
-                                msg.what = 2;
-                                mHandler.sendMessage(msg);
 
                             }
                         }

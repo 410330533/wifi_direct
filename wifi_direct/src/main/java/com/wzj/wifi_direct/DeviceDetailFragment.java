@@ -37,6 +37,7 @@ import com.google.gson.reflect.TypeToken;
 import com.wzj.bean.ChatModel;
 import com.wzj.bean.Member;
 import com.wzj.bean.Network;
+import com.wzj.bean.Node;
 import com.wzj.chat.ChatActivity;
 import com.wzj.communication.ClientThread;
 import com.wzj.communication.MemberServerThread;
@@ -67,6 +68,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -98,9 +100,12 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
     private Handler mHandler;
     private static ServerThread serverReadThread;
     private static MemberServerThread memberServerThread;
-    private Map<String, Member> memberMap = new LinkedHashMap<>();//记录当前组所有的member包括自身
-    private Map<String, Member> currentGroupMemberMap = new LinkedHashMap<>();
-    private Map<String, Map<String, Member>> otherGroupMemberMap = new HashMap<>();//记录其他组的成员，第一个参数String为发送该信息的设备的MAC地址；用于区分发送方
+    private Map<String, Member> memberMap = new ConcurrentHashMap<>();//记录当前组所有的member包括自身   组员/组主都需要维护
+    private Node memberNode; //组主维护
+    //private Map<String, Member> currentGroupMemberMap = new LinkedHashMap<>();  //组员维护
+
+    //private Map<String, Map<String, List<Member>>> otherGroupMemberMap = new HashMap<>();//记录其他组的成员，第一个参数key为消息来时的接口地址；用于区分发送方；第二个key为相应组中组主的MAC地址
+
     private Map<String, Socket> tcpConnections = new HashMap<>();//记录所有连接
     private List<Member> memberList = new ArrayList<>();//页面显示（不包括自身）
     private String choiceIp;
@@ -206,7 +211,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                         choiceMac =member.getMacAddress();
                         isCurrentGroup = member.getisCurrentGroup();
                         macAddressofRelayClient = member.getMacAddressofRelay();
-                        sentInterface = member.getSentInterface();
+                        sentInterface = member.getInterfaceType();
                         System.out.println(choiceIp+"/"+choiceMac+"/"+isCurrentGroup+"/"+macAddressofRelayClient);
                         if(info.isGroupOwner){
                             startActivityForResult(intent, SERVER_CHOOSE_FILE_RESULT_CODE);
@@ -379,7 +384,6 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
             memberMap = memberMapTemp;
             mapToList(memberMap);
         }*/
-
         mHandler = new Handler(){
             @Override
             public void handleMessage(Message msg) {
@@ -516,7 +520,11 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                         String sourceIp = msg.getData().getString("sourceIp");
                         Gson memberGson =new Gson();
                         Member member = memberGson.fromJson(memberStr.trim(), new TypeToken<Member>(){}.getType());
-                        memberMapPut(member.getMacAddress(), member);
+                        memberMap.put(member.getMacAddress(), member);
+
+                        //memberMapPut(member.getMacAddress(), member);
+
+
                         //检测是否已经存在组主
                         /*if (sourceIp.equals(GO_ADDRESS) && tcpConnections.containsKey(GO_ADDRESS) && !memberMap.containsKey(member.getMacAddress())){
                             String deviceName = member.getDeviceName();
@@ -551,15 +559,130 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                         Log.d("case8",""+memberMap.size()+"/"+memberList.size());
                         break;
                     case 9:
+
                         String delMemberStr = msg.getData().getString("member");
                         Gson delMemberGson = new Gson();
                         Member delMember = delMemberGson.fromJson(delMemberStr.trim(), new TypeToken<Member>(){}.getType());
-                        if(null != msg.getData().getString("mac") && otherGroupMemberMap.containsKey(msg.getData().getString("mac"))){
+                        String macofGO = msg.getData().getString("macofGO");
+                        //Map<String, List<Member>> deletedMap = null;
+                        //List<Member> deletedList = null;
+
+                        if(null == macofGO){
+                            Log.d("case 9:", "组员设备 - 成员删除");
+                            memberMap.remove(delMember.getMacAddress());
+                            mapToList(memberMap);
+                            break;
+                        }
+                        //处理otherGroupMemberMap
+                        List<String> removedList = new ArrayList<>();
+                        Node removedNode = memberNode.findNode(delMember.getMacAddress());
+                        if(removedNode != null){
                             Log.d(TAG, "组播删除成员！！");
-                            otherGroupMemberMap.get(msg.getData().getString("mac")).remove(delMember.getMacAddress());
+                            //删除的成员,应该进行级联删除与该组主有关的成员
+                            memberNode.removeNode(removedNode, removedList, true);
+
+                            //删除MemberMap中相应的成员
+                            Log.d(TAG, "组播删除MemberMap中相应成员！！");
+                            for (String delMAC : removedList){
+                                if(memberMap.get(delMAC) != null){
+                                    if(tcpConnections.get(memberMap.get(delMAC).getIpAddress()) != null){
+                                        tcpConnections.remove(memberMap.get(delMAC).getIpAddress());
+                                        Log.d("case9", "tcpConnections中已删除！");
+                                    }
+                                    memberMap.remove(delMAC);
+                                    Log.d("case9", "MemberMap中已删除！"+delMAC);
+                                }
+                            }
+                            mapToList(memberMap);
+                        }
+                        Log.d(TAG, "组播删除操作完成后，广播给组员！！！");
+                        UDPBroadcast udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_MEMMAP, memberMap);
+                        new Thread(udpBroadcast).start();
+                        /*if(delMember.getMacAddress().equals(macofGO)){
+                            if(otherGroupMemberMap.containsKey(macofGO)){
+                                deletedMap = otherGroupMemberMap.get(macofGO);
+                                //otherGroupMemberMap.get(macAddress).clear();
+                                otherGroupMemberMap.remove(macofGO);
+                            }else{
+                                Iterator iterator = otherGroupMemberMap.values().iterator();
+                                while (iterator.hasNext()){
+                                    Map<String, List<Member>> entry = (Map<String, List<Member>>) iterator.next();
+                                    if (entry.containsKey(macofGO)){
+                                        deletedList = entry.get(macofGO);
+                                        //entry.get(macAddress).clear();
+                                        entry.remove(macofGO);
+                                    }
+                                }
+                            }
+                        }else { //删除的为某一个成员
+                            Iterator iterator = otherGroupMemberMap.values().iterator();
+                            while (iterator.hasNext()){
+                                Map<String, List<Member>> entry = (Map<String, List<Member>>) iterator.next();
+                                if (entry.containsKey(macofGO)){
+                                    List<Member> list = entry.get(macofGO);
+                                    int size = list.size();
+                                    //list删除正确操作（需要删除多个元素）
+                                    for (int i = size - 1; i >= 0; i--){
+                                        if (list.get(i).getMacAddress().equals(delMember.getMacAddress())){
+                                            list.remove(i);
+                                        }
+
+                                    }
+                                }
+                            }
+                        }*/
+                        //处理memberMap
+                        /*Log.d("case9","删除成员"+delMember.getIpAddress()+"/"+delMember.getMacAddress());
+                        if(deletedMap != null){
+                            Log.d("case 9:", "删除deletedMap");
+                            Iterator iterator = deletedMap.keySet().iterator();
+                            while (iterator.hasNext()){
+                                if(memberMap.containsKey(iterator.next())){
+                                    if(tcpConnections.containsKey(memberMap.get(iterator.next()).getIpAddress())){
+                                        tcpConnections.remove(memberMap.get(iterator.next()).getIpAddress());
+                                    }
+                                    memberMap.remove(iterator.next());
+                                }
+                            }
+                            iterator = deletedMap.values().iterator();
+                            while (iterator.hasNext()){
+                                List<Member> list = (List<Member>) iterator.next();
+                                for (Member m : list){
+                                    String mac = m.getMacAddress();
+                                    if(memberMap.containsKey(mac)){
+                                        if(tcpConnections.containsKey(memberMap.get(mac).getIpAddress())){
+                                            tcpConnections.remove(memberMap.get(mac).getIpAddress());
+                                        }
+                                        memberMap.remove(mac);
+                                    }
+                                }
+                            }
+
+                        }else if (deletedList != null){
+                            Log.d("case 9:", "删除deletedList");
+                            memberMap.remove(macofGO);
+                            for(Member m : deletedList){
+                                String mac = m.getMacAddress();
+                                if(memberMap.containsKey(mac)){
+                                    if(tcpConnections.containsKey(memberMap.get(mac).getIpAddress())){
+                                        tcpConnections.remove(memberMap.get(mac).getIpAddress());
+                                    }
+                                    memberMap.remove(mac);
+                                }
+                            }
+
+                        }else {
+                            if(memberMap.containsKey(delMember.getMacAddress())) {
+                                memberMap.remove(delMember.getMacAddress());
+                                if (tcpConnections.containsKey(delMember.getIpAddress())) {
+                                    tcpConnections.remove(delMember.getIpAddress());
+                                    Log.d("case9", "tcpConnections已删除！");
+                                }
+                            }
                         }
 
-                        Log.d("case9","删除成员"+delMember.getIpAddress()+"/"+delMember.getMacAddress());
+                        mapToList(memberMap);
+
                         if(memberMap.containsKey(delMember.getMacAddress())){
                             memberMap.remove(delMember.getMacAddress());
                             if(tcpConnections.containsKey(delMember.getIpAddress())){
@@ -569,7 +692,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                             tcpConnections.remove(delMember.getIpAddress());
                             Log.d("case9", "已删除！");
                             mapToList(memberMap);
-                        }
+                        }*/
                         if((getActivity()) != null){
                             if((((WiFiDirectActivity)getActivity()).getReceiver()).isConnected()
                                     && memberList.size() == 0){
@@ -586,47 +709,136 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                             Log.d(TAG, "收到其他组的memberMap，将本组的memberMap添加到currentGroupMemberMap！！！");
                             currentGroupMemberMap.putAll(memberMap);
                         }*/
-                        String mac = msg.getData().getString("mac");
+                        String macofRelay = msg.getData().getString("macAddressofRelay");
+                        String otherGOMAC = msg.getData().getString("otherGOMAC");
                         String multicastMemberMapStr = msg.getData().getString("memberMap");
-                        char sentInterface = msg.getData().getChar("interface");
+                        char interfaceType = msg.getData().getChar("interfaceType");
                         Gson multicastMemberMapGson = new Gson();
-                        Map<String, Member> multicastMemberMap = multicastMemberMapGson.fromJson(multicastMemberMapStr.trim(), new TypeToken<Map<String, Member>>(){}.getType());
-                        if(otherGroupMemberMap.size() != 0){
-                            if(multicastMemberMap.size() < otherGroupMemberMap.get(mac).size()){
-                                for(Entry<String, Member> entry : otherGroupMemberMap.get(mac).entrySet()){
-                                    if(!multicastMemberMap.containsKey(entry.getKey()) && !entry.getKey().equals(mac)){
-                                        Log.d(TAG, "找到之前未删除的其他组成员-"+entry.getKey());
-                                        memberMap.remove(entry.getKey());
+                        /*Map<String, Member> multicastMemberMap = multicastMemberMapGson.fromJson(multicastMemberMapStr.trim(), new TypeToken<Map<String, Member>>(){}.getType());
+                        if(otherGroupMemberMap.containsKey(macofRelay) && otherGroupMemberMap.get(macofRelay).containsKey(otherGOMAC)){
+                            if(multicastMemberMap.size() < otherGroupMemberMap.get(macofRelay).get(otherGOMAC).size()){
+                                for(Member m : otherGroupMemberMap.get(macofRelay).get(otherGOMAC)){
+                                    if(!multicastMemberMap.containsKey(m.getMacAddress()) && !m.getMacAddress().equals(macofRelay)){
+                                        Log.d(TAG, "找到之前未删除的其他组成员-" + m.getMacAddress());
+                                        memberMap.remove(m.getMacAddress());
                                     }
                                 }
                             }
-                            otherGroupMemberMap.get(mac).clear();
+                            otherGroupMemberMap.get(macofRelay).get(otherGOMAC).clear();
                         }
-                        otherGroupMemberMap.put(mac, multicastMemberMap);
+                        List<Member> memberList = new ArrayList<>();
+                        for(Member m : multicastMemberMap.values()){
+                            memberList.add(m);
+                        }
+                        Map<String, List<Member>> map = new HashMap<>();
+                        map.put(otherGOMAC, memberList);
+                        otherGroupMemberMap.put(macofRelay, map);*/
+
+                        Map<String, Member> multicastMemberMap = multicastMemberMapGson.fromJson(multicastMemberMapStr.trim(), new TypeToken<Map<String, Member>>(){}.getType());
+
+                        if(multicastMemberMap == null || multicastMemberMap.size() == 0){
+                            return;
+                        }
+
+                        Node otherGO = null;
+                        if((otherGO = memberNode.findNode(otherGOMAC)) != null){
+                            Log.d(TAG, "找到otherGO");
+                            if(otherGO.getmChildren() == null){
+                                otherGO.setmChildren(new HashMap<String, Node>());
+                            }
+                            multicastMemberMap.remove(otherGOMAC);
+                            if(multicastMemberMap.size() < otherGO.getmChildren().size()){
+                                Map<String, Node> children = otherGO.getmChildren();
+                                Iterator<Entry<String, Node>> iterator = children.entrySet().iterator();
+                                while (iterator.hasNext()){
+                                    Node node = iterator.next().getValue();
+                                    Member m = node.getmData();
+                                    if(!multicastMemberMap.containsKey(m.getMacAddress()) && !m.getMacAddress().equals(macofRelay)) {
+                                        Log.d(TAG, "找到之前未删除的其他组成员-" + m.getMacAddress());
+                                        List<String> removedMembers = new ArrayList<>();
+                                        memberNode.removeNode(node, removedMembers, true);
+                                        for(String mac : removedMembers){
+                                            memberMap.remove(mac);
+                                        }
+
+                                        //iterator.remove();  //并发操作错误！！！！！！！！！！！！！！！！！！
+                                    }
+                                }
+                            }
+                        }else {
+                            //添加otherGO节点
+                            Log.d(TAG, "未找到otherGO，添加otherGO");
+                            Node parent = memberNode.findNode(macofRelay);
+                            if(parent == null){
+                                Log.d(TAG, "未找到parent");
+                                if(macofRelay.equals(otherGOMAC)){
+                                    Member GO;
+                                    if ((GO = multicastMemberMap.get(otherGOMAC)) != null){
+                                        otherGO = new Node(new HashMap<String, Node>(), GO);
+                                    }else {
+                                        GO = new Member("", "", otherGOMAC);
+                                        otherGO = new Node(new HashMap<String, Node>(), GO);
+                                    }
+                                    memberNode.addNode(otherGO);
+                                    GO.setisCurrentGroup(false);
+                                    GO.setMacAddressofRelay(macofRelay);
+                                    GO.setInterfaceType(interfaceType);
+                                    memberMap.put(otherGOMAC, GO);
+                                    multicastMemberMap.remove(otherGOMAC);
+                                }
+                            }else {
+                                Log.d(TAG, "找到parent");
+                                Member GO;
+                                if ((GO = multicastMemberMap.get(otherGOMAC)) != null){
+                                    otherGO = new Node(new HashMap<String, Node>(), GO);
+                                }else {
+                                    GO = new Member("", "", otherGOMAC);
+                                    otherGO = new Node(new HashMap<String, Node>(), GO);
+                                }
+                                parent.addNode(otherGO);
+                                Member tempOtherGO = multicastMemberMap.get(otherGOMAC);
+                                GO.setisCurrentGroup(false);
+                                GO.setMacAddressofRelay(macofRelay);
+                                GO.setInterfaceType(interfaceType);
+                                memberMap.put(otherGOMAC, GO);
+                                multicastMemberMap.remove(otherGOMAC);
+                            }
+
+                        }
+                        //添加otherMembers
+
+                       /* for(Member m : multicastMemberMap.values()){
+                            otherGO.addNode(new Node(m));
+                        }*/
+
+
                         String wiFiMacAddress = getWiFiMacAddress();
                         for(Entry<String, Member> entry : multicastMemberMap.entrySet()){
                             if(!entry.getKey().equals(wiFiMacAddress) && !entry.getKey().equals(myDevice.deviceAddress)){
-                                entry.getValue().setMacAddressofRelay(mac);
+                                entry.getValue().setMacAddressofRelay(macofRelay);
                                 entry.getValue().setisCurrentGroup(false);
-                                entry.getValue().setSentInterface(sentInterface);
+                                entry.getValue().setInterfaceType(interfaceType);
                                 memberMap.put(entry.getKey(), entry.getValue());
+
+                                //添加otherMembers
+                                otherGO.addNode(new Node(entry.getValue()));
                             }else {
                                 Log.d(TAG, "mac相同不添加！！！"+ wiFiMacAddress + "/" + myDevice.deviceAddress);
                             }
                         }
                         mapToList(memberMap);
                         Log.d(TAG, "收到组播memberMap-广播给组员！！！");
-                        UDPBroadcast udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_MEMMAP, memberMap);
+                        udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_MEMMAP, memberMap);
                         new Thread(udpBroadcast).start();
                         break;
-                    case 11:
+                    /*case 11:
                         Log.d(TAG, "case11:更新currentGroupMemberMap");
                         String str = msg.getData().getString("currentMemberMap");
                         Gson currentMemberMapGson = new Gson();
                         Map<String, Member> memberMapTemp = currentMemberMapGson.fromJson(str.trim(), new TypeToken<Map<String, Member>>(){}.getType());
                         currentGroupMemberMap.clear();
                         currentGroupMemberMap.putAll(memberMapTemp);
-                        break;
+                        break;*/
                 }
             }
         };
@@ -646,6 +858,10 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                     //statusText.setText("Sending: "+uri);
                     Log.d(WiFiDirectActivity.TAG, "Intent--------------"+uri);
                     Socket client = tcpConnections.get(choiceIp);
+                    if(choiceIp == null || choiceIp.equals("")){
+                        Log.d(TAG, "choiceIp为空，返回");
+                        return;
+                    }
                     if(isCurrentGroup){
                         Log.d(TAG, "组内通信");
                         if (client != null){
@@ -706,7 +922,10 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                     serverWriteThread.setSocket(client);
                     serverWriteThread.setFile(uri);
                     new Thread(serverWriteThread).start();*/
-
+                    if(choiceIp == null || choiceIp.equals("")){
+                        Log.d(TAG, "choiceIp为空，返回");
+                        return;
+                    }
                     Socket client = tcpConnections.get(choiceIp);
                     if(isCurrentGroup){
                         Log.d(TAG, "组内通信");
@@ -721,13 +940,22 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                         }else {
                             Uri uri = data.getData();
                             Socket relayClient = null;
+                            Map<String, Member> currentMemberMap = memberNode.getCurrentGroupMemberMap();
+                            for(Member m : currentMemberMap.values()){
+                                if((relayClient = tcpConnections.get(m.getIpAddress())) != null && !relayClient.isClosed()){
+                                    //relayNode的选择，不要选前一个组中的组员，应选本组中的组员
+                                    Log.d(TAG, "MS选择RelyClient - "+relayClient.getInetAddress().getHostAddress());
+                                    break;
+                                }
+                            }
+                            /*Socket relayClient = null;
                             for(Entry<String, Socket> entry : tcpConnections.entrySet()){
                                 if(entry.getValue() != null && !entry.getValue().isClosed()){
                                     relayClient = entry.getValue();
                                     Log.d(TAG, "选择RelyClient - "+relayClient.getInetAddress().getHostAddress());
                                     break;
                                 }
-                            }
+                            }*/
                             ClientThread clientThread = new ClientThread(activity, mHandler, myDevice);
                             clientThread.setUri(uri);
                             clientThread.setType("relay");
@@ -806,6 +1034,10 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
         // server. The file server is single threaded, single connection server
         // socket.
         if(info.groupFormed && info.isGroupOwner){
+            if(memberNode == null){
+                memberNode = new Node(new HashMap<String, Node>(), new Member(GO_ADDRESS, "(GO)"+myDevice.deviceName, myDevice.deviceAddress));
+            }
+
             if(serverReadThread == null){
                 serverReadThread =new ServerThread(activity, memberMap, mHandler, "read", tcpConnections, myDevice);
                 new Thread(serverReadThread).start();
@@ -941,25 +1173,60 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                     }
                 }
                 removeIp = memberMap.get(removeMac).getIpAddress();
-                if(otherGroupMemberMap.containsKey(removeMac)){
+
+                if(memberNode.findNode(removeMac) != null){
                     Log.d(TAG, "删除的成员为legacy（GO2）- 删除GO2组的成员");
-                    String[] removeMACs = new String[otherGroupMemberMap.get(removeMac).size()];
-                    int index = 0;
-                    for(Entry<String, Member> entry : otherGroupMemberMap.get(removeMac).entrySet()){
-                        removeMACs[index++] = entry.getValue().getMacAddress();
+                    List<String> removedList = new ArrayList<>();
+                    //删除的成员,应该进行级联删除与该组主有关的成员
+                    memberNode.removeNode(memberNode.findNode(removeMac), removedList, true);
+
+                    //删除MemberMap中相应的成员
+                    Log.d(TAG, "组播删除MemberMap中相应成员！！");
+                    for (String delMAC : removedList){
+                        if(memberMap.get(delMAC) != null){
+                            if(tcpConnections.get(memberMap.get(delMAC).getIpAddress()) != null){
+                                tcpConnections.remove(memberMap.get(delMAC).getIpAddress());
+                                Log.d("case9", "tcpConnections中已删除！");
+                            }
+                            memberMap.remove(delMAC);
+                            Log.d("case9", "MemberMap中已删除！");
+                        }
                     }
+                    mapToList(memberMap);
+
+
+
+                    /*int length = 0;
+                    for(Entry<String, List<Member>> entry : otherGroupMemberMap.get(removeMac).entrySet()){
+                        length += entry.getValue().size();
+                    }
+                    String[] removeMACs = new String[length];
+
+                    int index = 0;
+                    for(Entry<String, List<Member>> entry : otherGroupMemberMap.get(removeMac).entrySet()){
+                        for(Member member : entry.getValue()){
+                            removeMACs[index++] = member.getMacAddress();
+                        }
+                    }
+
                     otherGroupMemberMap.get(removeMac).clear();
                     otherGroupMemberMap.remove(removeMac);
                     for(int i = 0; i < removeMACs.length; i++){
                         memberMap.remove(removeMACs[i]);
-                    }
-                    memberMapRemove(removeMac);
-                    mapToList(memberMap);
+                    }*/
+                    //memberMapRemove(removeMac);
+                    //mapToList(memberMap);
+
                     //所需要删除的其他组成员
                     UDPBroadcast udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_MEMMAP, memberMap);
                     new Thread(udpBroadcast).start();
                 }else {
-                    memberMapRemove(removeMac);
+                    Log.d(TAG, "组内成员删除");
+                    //memberMapRemove(removeMac);
+                    if(memberNode.findNode(removeMac) != null){
+                        memberNode.removeNode(memberNode.findNode(removeMac), new ArrayList<String>(), true);
+                    }
+                    memberMap.remove(removeMac);
                     mapToList(memberMap);
                     //将删除的member广播给其他成员
                     UDPBroadcast udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.DELETE_MEMBER, new Member(removeIp, "", removeMac));
@@ -968,6 +1235,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                     //再次广播
                     udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.DELETE_MEMBER, new Member(removeIp, "", removeMac));
                     new Thread(udpBroadcast).start();
+
 
                 }
                 //将删除的member组播给其他组主;若删除的为gateway node则需要在接收组播时，将该gateway node下的成员全部删除
@@ -1016,7 +1284,8 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                     }, 1000);
                     Member member = new Member("", "Legacy("+device.deviceAddress+")", device.deviceAddress);
                     memberMap.put(device.deviceAddress, member);
-                    currentGroupMemberMap.put(device.deviceAddress, member);
+                    //currentGroupMemberMap.put(device.deviceAddress, member);
+                    //memberNode.addNode(new Node(member));
                     //更新成员列表
                     mapToList(memberMap);
                     //this.memberMapPut(device.deviceAddress, new Member("", "Legacy("+device.deviceAddress+")", device.deviceAddress));
@@ -1034,7 +1303,8 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                     }, 1000);
                     Member member = new Member("", device.deviceName, device.deviceAddress);
                     memberMap.put(device.deviceAddress, member);
-                    currentGroupMemberMap.put(device.deviceAddress, member);
+                    //currentGroupMemberMap.put(device.deviceAddress, member);
+                    //memberNode.addNode(new Node(member));
                     //更新成员列表
                     mapToList(memberMap);
                     //this.memberMapPut(device.deviceAddress, new Member("", device.deviceName, device.deviceAddress));
@@ -1099,8 +1369,14 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
         //mContentView.findViewById(R.id.btn_start_client).setVisibility(View.GONE);
         //mContentView.findViewById(R.id.btn_start_server).setVisibility(View.GONE);
         this.getView().setVisibility(View.GONE);
-        currentGroupMemberMap.clear();
-        otherGroupMemberMap.clear();
+
+        //currentGroupMemberMap.clear();
+        //otherGroupMemberMap.clear();
+        if(memberNode != null){
+            memberNode.clear();
+            //memberNode = null;
+        }
+
         memberMap.clear();
         clearMembers();
         tcpConnections.clear();
@@ -1234,17 +1510,21 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                                 Log.d("getIPFromMac: ", "找到Legacy IP/"+splitted[0]);
                                 Member member = new Member(splitted[0], "Legacy("+device.deviceAddress+")", device.deviceAddress);
                                 memberMap.put(device.deviceAddress, member);
-                                currentGroupMemberMap.put(device.deviceAddress, member);
+                                //currentGroupMemberMap.put(device.deviceAddress, member);
+                                memberNode.addNode(new Node(member));
                                 //组播成员列表
-                                MulticastThread multicastWlanWrite = new MulticastThread(activity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, MulticastThread.WLAN_INTERFACE_REGREX, memberMap, myDevice.deviceAddress);
+                                Log.d("getIPFromMac: ", "找到Legacy IP 组播 CurrentGroupMemberMap");
+                                Map<String, Member> currentGroupMemberMap = memberNode.getCurrentGroupMemberMap();
+                                MulticastThread multicastWlanWrite = new MulticastThread(activity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, MulticastThread.WLAN_INTERFACE_REGREX, currentGroupMemberMap, myDevice.deviceAddress);
                                 new Thread(multicastWlanWrite).start();
-                                MulticastThread multicastP2pWrite = new MulticastThread(activity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, P2P_INTERFACE_REGREX, memberMap, myDevice.deviceAddress);
+                                MulticastThread multicastP2pWrite = new MulticastThread(activity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, MulticastThread.P2P_INTERFACE_REGREX, currentGroupMemberMap, myDevice.deviceAddress);
                                 new Thread(multicastP2pWrite).start();
                             }else if (type == 1){
                                 Log.d("getIPFromMac: ", "找到非Legacy IP/"+splitted[0]);
                                 Member member = new Member(splitted[0], device.deviceName, device.deviceAddress);
                                 memberMap.put(device.deviceAddress, member);
-                                currentGroupMemberMap.put(device.deviceAddress, member);
+                                //currentGroupMemberMap.put(device.deviceAddress, member);
+                                memberNode.addNode(new Node(member));
                             }
                             Message msg = new Message();
                             msg.what = 6;
@@ -1317,6 +1597,10 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
         return myDevice;
     }
 
+    public Node getMemberNode() {
+        return memberNode;
+    }
+
     public Handler getmHandler() {
         return mHandler;
     }
@@ -1354,7 +1638,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
             multicastTimer.schedule(new TimerTask() {
                 @Override
                 public void run() {
-                    if(otherGroupMemberMap.size() == 0 && memberMap.size() != 0){
+                    /*if(otherGroupMemberMap.size() == 0 && memberMap.size() != 0){
                         Log.d(TAG, "wlan组播memberMap");
                         MulticastThread multicastThread = new MulticastThread(activity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, MulticastThread.WLAN_INTERFACE_REGREX, memberMap, myDevice.deviceAddress);
                         new Thread(multicastThread).start();
@@ -1362,7 +1646,13 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
                         Log.d(TAG, "wlan组播currentGroupMemberMap");
                         MulticastThread multicastThread = new MulticastThread(activity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, MulticastThread.WLAN_INTERFACE_REGREX, currentGroupMemberMap, myDevice.deviceAddress);
                         new Thread(multicastThread).start();
-                    }
+                    }*/
+                    Map<String, Member> currentGroupMemberMap = memberNode.getCurrentGroupMemberMap();
+                    Log.d(TAG, "wlan组播currentGroupMemberMap");
+                    MulticastThread multicastThread = new MulticastThread(activity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP, MulticastThread.WLAN_INTERFACE_REGREX, currentGroupMemberMap, myDevice.deviceAddress);
+                    new Thread(multicastThread).start();
+
+
                 }
             },0, 1000*60);
         }
@@ -1372,7 +1662,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
         isGO = GO;
     }
 
-    public Map<String, Map<String, Member>> getOtherGroupMemberMap() {
+    /*public Map<String, Map<String, List<Member>>> getOtherGroupMemberMap() {
         return otherGroupMemberMap;
     }
 
@@ -1403,7 +1693,7 @@ public class DeviceDetailFragment extends ListFragment implements WifiP2pManager
         }else {
             return memberMap;
         }
-    }
+    }*/
 
     public static UDPBroadcast getUdpBroadcastRead() {
         return udpBroadcastRead;

@@ -393,7 +393,7 @@ public class ClientThread implements Runnable {
         }
     }
     //Relay写图片
-    private class RelayClientWrite implements Runnable {
+    /*private class RelayClientWrite implements Runnable {
         private String mac;
 
         public RelayClientWrite(String mac) {
@@ -424,6 +424,96 @@ public class ClientThread implements Runnable {
                 stream.flush();
                 //stream.close();
                 Log.d(WiFiDirectActivity.TAG, "ClientWrite：客户端写入完毕");
+                Message msg = new Message();
+                msg.what = 2;
+                mHandler.sendMessage(msg);
+            } catch (FileNotFoundException e) {
+                Log.d(WiFiDirectActivity.TAG, e.toString());
+                e.printStackTrace();
+
+            } catch (IOException e) {
+                Log.d(WiFiDirectActivity.TAG, e.toString());
+                if(socket != null ){
+                    if(socket.getInetAddress().getHostAddress() != null){
+                        if(tcpConnections.containsKey(socket.getInetAddress().getHostAddress())){
+                            tcpConnections.remove(socket.getInetAddress().getHostAddress());
+                        }
+                    }
+                    try {
+                        socket.close();
+                    } catch (IOException e1) {
+                        e1.printStackTrace();
+                    }
+                }
+                System.out.println(e.getMessage());
+                e.printStackTrace();
+
+                if(e.getMessage().equals("sendto failed: EPIPE (Broken pipe)")){
+                    try {
+                        socket.close();
+                        socket = null;
+                        Log.d(WiFiDirectActivity.TAG, "ClientThread：关闭client socket");
+                        Message msg = new Message();
+                        msg.what = 3;
+                        mHandler.sendMessage(msg);
+                    } catch (IOException e1) {
+                        Log.d(WiFiDirectActivity.TAG, e1.toString());
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    }*/
+    //Relay写图片
+    private class RelayClientWrite implements Runnable {
+        private String mac;
+
+        public RelayClientWrite(String mac) {
+            this.mac = mac;
+        }
+
+        @Override
+        public void run() {
+
+            try {
+                DataOutputStream stream = new DataOutputStream(socket.getOutputStream());
+                ContentResolver cr = wiFiDirectActivity.getContentResolver();
+                InputStream in = null;
+                in = cr.openInputStream(uri);
+                File file = new File(GetPath.getPath(wiFiDirectActivity, uri));
+                Log.d(WiFiDirectActivity.TAG, "ClientWrite：客户端写入开始 " + GetPath.getPath(wiFiDirectActivity, uri));
+                long flag = StringToLong.transfer("Relaynod");
+                stream.writeLong(flag);
+                stream.writeLong(file.length());
+                stream.writeBytes(mac);
+                byte buf[] = new byte[1024];
+                int length;
+                while ((length = in.read(buf)) != -1) {
+                    //将buf中从0到length个字节写到输出流
+                    stream.write(buf, 0, length);
+                }
+                in.close();
+                stream.flush();
+                /*DataOutputStream stream = new DataOutputStream(socket.getOutputStream());
+                int bit = 1024*1024 - 72;
+                int byteSize = bit/8;
+                Load load = new Load(byteSize);
+                ByteArrayInputStream in = load.offeredLoad();
+                Log.d(WiFiDirectActivity.TAG, "ClientWrite：客户端写入开始 " +System.nanoTime());
+                long flag = StringToLong.transfer("Relaynod");
+                stream.writeLong(flag);
+                stream.writeLong(byteSize);
+                stream.writeBytes(mac);
+                byte buf[] = new byte[byteSize];
+                int length;
+                while ((length = in.read(buf)) != -1) {
+                    //将buf中从0到length个字节写到输出流
+                    stream.write(buf, 0, length);
+                }
+                in.close();
+                stream.flush();*/
+                //stream.close();
+                Log.d(WiFiDirectActivity.TAG, "ClientWrite：客户端写入完毕"+System.nanoTime());
                 Message msg = new Message();
                 msg.what = 2;
                 mHandler.sendMessage(msg);

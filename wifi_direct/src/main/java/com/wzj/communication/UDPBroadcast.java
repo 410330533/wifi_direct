@@ -7,6 +7,7 @@ import android.util.Log;
 
 import com.google.gson.Gson;
 import com.wzj.bean.Member;
+import com.wzj.wifi_direct.DeviceDetailFragment;
 import com.wzj.wifi_direct.WiFiDirectActivity;
 
 import java.io.IOException;
@@ -82,7 +83,7 @@ public class UDPBroadcast implements Runnable {
                 try {
                     Gson gson = new Gson();
                     String str = messageType + "/" +gson.toJson(memberMap);
-                    System.out.println("JSON字符串: "+ str.trim());
+                    System.out.println("ADD_MEMMAP: "+ str.trim());
                     buf = str.getBytes();
                     outPacket = new DatagramPacket(buf, str.length(), InetAddress.getByName(BD_ADDRESS), PORT);
                     datagramSocket.send(outPacket);
@@ -96,7 +97,7 @@ public class UDPBroadcast implements Runnable {
                 try {
                     Gson gson = new Gson();
                     String str = messageType + "/" +gson.toJson(member);
-                    System.out.println("JSON字符串: "+ str.trim());
+                    System.out.println("ADD_MEMBER: "+ str.trim());
                     buf = str.getBytes();
                     outPacket = new DatagramPacket(buf, str.length(), InetAddress.getByName(BD_ADDRESS), PORT);
                     datagramSocket.send(outPacket);
@@ -109,7 +110,7 @@ public class UDPBroadcast implements Runnable {
                 try {
                     Gson gson = new Gson();
                     String str = messageType + "/" +gson.toJson(member);
-                    System.out.println("JSON字符串: "+ str.trim());
+                    System.out.println("DELETE_MEMBER: "+ str.trim());
                     buf = str.getBytes();
                     outPacket = new DatagramPacket(buf, str.length(), InetAddress.getByName(BD_ADDRESS), PORT);
                     datagramSocket.send(outPacket);
@@ -122,7 +123,7 @@ public class UDPBroadcast implements Runnable {
                 try {
                     Gson gson = new Gson();
                     String str = messageType + "/" +gson.toJson(memberMap);
-                    System.out.println("JSON字符串: "+ str.trim());
+                    System.out.println("ADD_CURRENT_MEMMAP: "+ str.trim());
                     buf = str.getBytes();
                     outPacket = new DatagramPacket(buf, str.length(), InetAddress.getByName(BD_ADDRESS), PORT);
                     datagramSocket.send(outPacket);
@@ -148,6 +149,10 @@ public class UDPBroadcast implements Runnable {
                 while (true){
                     System.out.println("接收广播包！！！！！！");
                     datagramSocket.receive(inPacket);
+                    if(!inPacket.getAddress().getHostAddress().equals(DeviceDetailFragment.GO_ADDRESS)){
+                        Log.d("Broadcast", "只接收组主发的广播 " + inPacket.getAddress().getHostAddress());
+                        return;
+                    }
                     if(!inPacket.getAddress().getHostAddress().equals(ipAddress)){
                         String str = new String(inPacket.getData(), 0, inPacket.getLength());
                         System.out.println(inPacket.getAddress().getHostAddress()+"收到广播包："+ str);
