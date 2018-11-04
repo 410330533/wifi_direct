@@ -27,7 +27,6 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Map;
-import java.util.Map.Entry;
 
 /**
  * Created by wzj on 2017/4/24.
@@ -298,13 +297,21 @@ public class MemberServerThread implements Runnable {
                                 Socket client = tcpConnections.get(choiceIp);
                                 if(deviceDetailFragment.isGO()){
                                     Socket relayClient = null;
-                                    for(Entry<String, Socket> entry : tcpConnections.entrySet()){
+                                    Map<String, Member> currentMemberMap = deviceDetailFragment.getMemberNode().getCurrentGroupMemberMap();
+                                    for(Member m : currentMemberMap.values()){
+                                        if((relayClient = tcpConnections.get(m.getIpAddress())) != null && !relayClient.isClosed()){
+                                            //relayNode的选择，不要选前一个组中的组员，应选本组中的组员
+                                            Log.d(TAG, "MS选择RelyClient - "+relayClient.getInetAddress().getHostAddress());
+                                            break;
+                                        }
+                                    }
+                                    /*for(Entry<String, Socket> entry : tcpConnections.entrySet()){
                                         if(entry.getValue() != null && !entry.getValue().isClosed()){
                                             relayClient = entry.getValue();
                                             Log.d(TAG, "MS选择RelyClient - "+relayClient.getInetAddress().getHostAddress());
                                             break;
                                         }
-                                    }
+                                    }*/
 
                                     DataOutputStream dataOutputStream = new DataOutputStream(relayClient.getOutputStream());
                                     DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());

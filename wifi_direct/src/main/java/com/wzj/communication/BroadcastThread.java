@@ -22,7 +22,7 @@ import java.util.Map;
  * Created by wzj on 2017/4/21.
  */
 
-public class UDPBroadcast implements Runnable {
+public class BroadcastThread implements Runnable {
     public static final char ADD_MEMMAP = '0';
     public static final char ADD_MEMBER = '1';
     public static final char DELETE_MEMBER = '2';
@@ -48,18 +48,18 @@ public class UDPBroadcast implements Runnable {
         this.ipAddress = ipAddress;
     }
 
-    public UDPBroadcast(int type, Handler mHandler) {
+    public BroadcastThread(int type, Handler mHandler) {
         this.type = type;
         this.mHandler = mHandler;
     }
 
 
-    public UDPBroadcast(int type, char messageType, Member member) {
+    public BroadcastThread(int type, char messageType, Member member) {
         this.type = type;
         this.messageType = messageType;
         this.member = member;
     }
-    public UDPBroadcast(int type, char messageType, Map <String, Member> memberMap) {
+    public BroadcastThread(int type, char messageType, Map <String, Member> memberMap) {
         this.type = type;
         this.messageType = messageType;
         this.memberMap = memberMap;
@@ -151,7 +151,7 @@ public class UDPBroadcast implements Runnable {
                     datagramSocket.receive(inPacket);
                     if(!inPacket.getAddress().getHostAddress().equals(DeviceDetailFragment.GO_ADDRESS)){
                         Log.d("Broadcast", "只接收组主发的广播 " + inPacket.getAddress().getHostAddress());
-                        return;
+                        continue; //千万别用return！！！！！！！
                     }
                     if(!inPacket.getAddress().getHostAddress().equals(ipAddress)){
                         String str = new String(inPacket.getData(), 0, inPacket.getLength());

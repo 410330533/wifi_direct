@@ -115,7 +115,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements ChannelList
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         // add necessary intent values to be matched.
-        if(savedInstanceState !=null && null != savedInstanceState.getString("isGroupOwner")){
+        if(savedInstanceState != null && null != savedInstanceState.getString("isGroupOwner")){
             Log.d(TAG,""+isGroupOwner);
             isGroupOwner = Boolean.valueOf(savedInstanceState.getString("isGroupOwner"));
             Log.d(TAG,""+isGroupOwner);

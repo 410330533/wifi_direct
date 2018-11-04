@@ -1,46 +1,50 @@
 package com.wzj.bean;
 
+import static com.wzj.wifi_direct.BatteryReceiver.power;
+
 /**
  * Created by wzj on 2017/4/23.
  */
 
 public class Member {
-    private String ipAddress;
-    private String deviceName;
-    private String macAddress;
-    private String macAddressofRelay;
-    private char interfaceType;
-    private boolean isCurrentGroup = true;
-    private float power;
+    private String ip;
+    private String name;
+    private String mac;
+    private String macofRelay;
+    private char type;
+    private boolean flag = true; //isCurrentGroup
+    //private float power;
     //private Socket socket = null;
 
     public Member(String ipAddress, String deviceName, String macAddress) {
-        this.ipAddress = ipAddress;
-        this.deviceName = deviceName;
-        this.macAddress = macAddress;
+        //super(ipAddress, deviceName, macAddress);
+        this.ip = ipAddress;
+        this.name = deviceName;
+        this.mac = macAddress;
     }
 
     public Member(String ipAddress, String deviceName, String macAddress, float power) {
-        this.ipAddress = ipAddress;
-        this.deviceName = deviceName;
-        this.macAddress = macAddress;
-        this.power = power;
+        //super(ipAddress, deviceName, macAddress);
+        this.ip = ipAddress;
+        this.name = deviceName;
+        this.mac = macAddress;
+       // this.power = power;
     }
 
     public void setMacAddress(String macAddress) {
-        this.macAddress = macAddress;
+        this.mac = macAddress;
     }
 
     public String getMacAddress() {
-        return macAddress;
+        return mac;
     }
 
     public void setIpAddress(String ipAddress) {
-        this.ipAddress = ipAddress;
+        this.ip = ipAddress;
     }
 
     public void setDeviceName(String deviceName) {
-        this.deviceName = deviceName;
+        this.name = deviceName;
     }
 
     /*public void setSocket(Socket socket) {
@@ -48,43 +52,43 @@ public class Member {
     }*/
 
     public String getIpAddress() {
-        return ipAddress;
+        return ip;
     }
 
     public String getDeviceName() {
-        return deviceName;
+        return name;
     }
 
     public float getPower() {
         return power;
     }
 
-    public void setPower(float power) {
+    /*public void setPower(float power) {
         this.power = power;
-    }
+    }*/
 
     public String getMacAddressofRelay() {
-        return macAddressofRelay;
+        return macofRelay;
     }
 
     public void setMacAddressofRelay(String macAddressofRelay) {
-        this.macAddressofRelay = macAddressofRelay;
+        this.macofRelay = macAddressofRelay;
     }
 
     public boolean getisCurrentGroup() {
-        return isCurrentGroup;
+        return flag;
     }
 
     public void setisCurrentGroup(boolean currentGroup) {
-        isCurrentGroup = currentGroup;
+        flag = currentGroup;
     }
 
     public char getInterfaceType() {
-        return interfaceType;
+        return type;
     }
 
     public void setInterfaceType(char interfaceType) {
-        this.interfaceType = interfaceType;
+        this.type = interfaceType;
     }
 
 /*

@@ -7,6 +7,7 @@ import android.util.Log;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import com.wzj.bean.BaseMember;
 import com.wzj.bean.Member;
 import com.wzj.util.AddressObtain;
 import com.wzj.wifi_direct.WiFiDirectActivity;
@@ -42,7 +43,8 @@ public class MulticastThread implements Runnable {
     public static final String P2P_INTERFACE_REGREX = "^p2p";
     public static final String WLAN_INTERFACE_REGREX = "^wlan";
     private static final String MULTICAST_IP = "239.0.0.1";
-    public static final int MULTICSAT_PORT = 30000;
+    public static final int MULTICSAT_P2P_PORT = 30000;
+    public static final int MULTICSAT_WLAN_PORT = 30002;
     private static final int DATA_LEN = 1472;
     private MulticastSocket multicastSocket = null;
     private InetAddress multicastAddress = null;
@@ -56,9 +58,11 @@ public class MulticastThread implements Runnable {
     private String readInterfaceRegrex = P2P_INTERFACE_REGREX;
     private String writeInterfaceRegrex = P2P_INTERFACE_REGREX;
     private Map<String, Member> memberMap;
+    private Map<String, BaseMember> baseMemberMap;
     private String macAddress;
     private String macOfP2P;
     private String otherGOMAC;
+    private String parentMAC;
     private WiFiDirectActivity wiFiDirectActivity;
     private Member delMember;
     private char interfaceType;
@@ -81,13 +85,14 @@ public class MulticastThread implements Runnable {
         this.macOfP2P = macOfP2P;
     }
     //GO_MULTICAST_MEMMAP_FORWARD写
-    public MulticastThread(WiFiDirectActivity wiFiDirectActivity, char type, char messageType, String otherGOMAC, String writeInterfaceRegrex, Map<String, Member> memberMap) {
+    public MulticastThread(WiFiDirectActivity wiFiDirectActivity, char type, char messageType, String otherGOMAC, String parentMAC, String writeInterfaceRegrex, Map<String, BaseMember> baseMemberMap) {
         this.wiFiDirectActivity = wiFiDirectActivity;
         this.type = type;
         this.messageType = messageType;
         this.writeInterfaceRegrex = writeInterfaceRegrex;
-        this.memberMap = memberMap;
+        this.baseMemberMap = baseMemberMap;
         this.otherGOMAC = otherGOMAC;
+        this.parentMAC = parentMAC;
     }
     //GM_DETECT Multicast写
     public MulticastThread(WiFiDirectActivity wiFiDirectActivity, char type, char messageType, String writeInterfaceRegrex) {
@@ -120,6 +125,7 @@ public class MulticastThread implements Runnable {
         //System.out.println("看这里 "+multicastSocket.getInterface().getHostName());
         if(type == MULTICAST_WRITE){
             try {
+                int multicastPort = MULTICSAT_WLAN_PORT;
                 if(multicastSocket == null || multicastSocket.isClosed()){
                     multicastAddress = InetAddress.getByName(MULTICAST_IP);
                     multicastSocket = new MulticastSocket();
@@ -137,11 +143,13 @@ public class MulticastThread implements Runnable {
                             break;
                         }
                     }
+
                     if(networkInterface != null && networkInterface.getInetAddresses() != null){
                         //Specify the network interface for outgoing multicast datagrams sent on this socket.
                         if(writeInterfaceRegrex.equals(WLAN_INTERFACE_REGREX)){
                             if(wiFiDirectActivity.getWiFiBroadcastReceiver().isWFDConnected()){
                                 multicastSocket.setNetworkInterface(networkInterface);
+                                multicastPort = MULTICSAT_P2P_PORT;
                                 //multicastSocket.joinGroup(new InetSocketAddress(multicastAddress, MULTICSAT_PORT), networkInterface);
                                 Log.d("wlan多播写", "初始化完成！");
                             }else {
@@ -166,23 +174,33 @@ public class MulticastThread implements Runnable {
                     Log.d(TAG, "发送组播包memMap！！");
                     Gson gson = new Gson();
                     String str;
+                    baseMemberMap = new HashMap<>();
                     if(writeInterfaceRegrex.equals(WLAN_INTERFACE_REGREX)){
-                        Map<String, Member> newMemMap = new HashMap<>();
+                        //Map<String, BaseMember> newMemMap = new HashMap<>();
                         for (Entry<String, Member> entry : memberMap.entrySet()){
                             if(!entry.getKey().equals(macOfP2P)){
-                                newMemMap.put(entry.getKey(), entry.getValue());
+                                Member member = entry.getValue();
+                                BaseMember baseMember = new BaseMember(member.getIpAddress(), member.getDeviceName(), member.getMacAddress());
+                                baseMemberMap.put(entry.getKey(), baseMember);
                             }else {
-                                Log.d(TAG, "使用Wlan接口发送时，需要剔除本机设备信息-"+macOfP2P+"/macofP2P-"+macAddress);
+                                Log.d(TAG, "使用Wlan接口发送时，需要剔除本机设备信息-"+macOfP2P+"/another-"+macAddress);
                             }
                         }
                         interfaceType = 'w';
                         otherGOMAC = macAddress;
-                        //第一次发送消息，不存在中间节点进行转发的过程，因此macAddress与otherGOMAC相同，均为当前组主的MAC。
-                        str = messageType + "/" + macAddress + "/" + otherGOMAC + "/" + interfaceType + "/" + gson.toJson(newMemMap);
+                        parentMAC = macAddress;
+                        //第一次发送消息，不存在中间节点进行转发的过程，因此macAddress、otherGOMAC、parent相同，均为当前组主的MAC。
+                        str = messageType + "/" + macAddress + "/" + otherGOMAC + "/" + parentMAC + "/" + interfaceType + "/" + gson.toJson(baseMemberMap);
                     }else {
+                        for (Entry<String, Member> entry : memberMap.entrySet()){
+                            Member member = entry.getValue();
+                            BaseMember baseMember = new BaseMember(member.getIpAddress(), member.getDeviceName(), member.getMacAddress());
+                            baseMemberMap.put(entry.getKey(), baseMember);
+                        }
                         interfaceType = 'p';
                         otherGOMAC = macAddress;
-                        str = messageType + "/" + macOfP2P + "/" + otherGOMAC + "/" + interfaceType + "/" +gson.toJson(memberMap);
+                        parentMAC = macAddress;
+                        str = messageType + "/" + macAddress + "/" + otherGOMAC + "/" + parentMAC + "/" + interfaceType + "/" +gson.toJson(baseMemberMap);
                     }
                     int gsonLength = str.getBytes().length;
                     if(gsonLength > DATA_LEN){
@@ -190,13 +208,13 @@ public class MulticastThread implements Runnable {
                         for(int i = 0; i < gsonLength; i++){
                             if(gsonLength - 1 - i > DATA_LEN){
                                 buf = str.substring(i, i + DATA_LEN - 1).getBytes();
-                                outPacket = new DatagramPacket(buf, buf.length, multicastAddress, MULTICSAT_PORT);
+                                outPacket = new DatagramPacket(buf, buf.length, multicastAddress, multicastPort);
                                 multicastSocket.send(outPacket);
                                 i += DATA_LEN - 1;
                             }else {
                                 Log.d(TAG, "最后一个包");
                                 buf = str.substring(i, gsonLength - 1).getBytes();
-                                outPacket = new DatagramPacket(buf, buf.length, multicastAddress, MULTICSAT_PORT);
+                                outPacket = new DatagramPacket(buf, buf.length, multicastAddress, multicastPort);
                                 multicastSocket.send(outPacket);
                                 break;
                             }
@@ -205,34 +223,39 @@ public class MulticastThread implements Runnable {
                     }else {
                         Log.d(TAG, "memberMap长度小于1472，不需要拆分为多个包");
                         buf = str.getBytes();
-                        outPacket = new DatagramPacket(buf, buf.length, multicastAddress, MULTICSAT_PORT);
+                        outPacket = new DatagramPacket(buf, buf.length, multicastAddress, multicastPort);
                         multicastSocket.send(outPacket);
                     }
                 }else if(messageType == GO_MULTICAST_MEMMAP_FORWARD){
                     Log.d(TAG, "转发组播包memMap！！");
                     Gson gson = new Gson();
                     String str;
-                    //存在中间节点转发，因此两个地址不同，macAddress当前设备的MAC；otherGOMAC为其他组组主（MemberMap对应的组）的MAC
+
                     if(writeInterfaceRegrex.equals(WLAN_INTERFACE_REGREX)){
                         interfaceType = 'w';
-                        str = GO_MULTICAST_MEMMAP + "/" + macAddress + "/" + otherGOMAC + "/" + interfaceType + "/" + gson.toJson(memberMap);
                     }else {
                         interfaceType = 'p';
-                        str = GO_MULTICAST_MEMMAP + "/" + macAddress + "/" + otherGOMAC + "/" + interfaceType + "/" +gson.toJson(memberMap);
                     }
+
+                    //如果所收到消息中的MACofOtherGO与ParentofOtherGO相等，则认定当前节点为组播消息发送方的父节点，进而将ParentofOtherGO字段更新为当前设备的MAC地址
+                    if (otherGOMAC.equals(parentMAC)){
+                        parentMAC = macAddress;
+                    }
+                    //存在中间节点转发，因此两个地址不同，macAddress当前设备的MAC；otherGOMAC为其他组组主（MemberMap对应的组）的MAC
+                    str = GO_MULTICAST_MEMMAP + "/" + macAddress + "/" + otherGOMAC + "/" + parentMAC + "/" + interfaceType + "/" + gson.toJson(baseMemberMap);
                     int gsonLength = str.getBytes().length;
                     if (gsonLength > DATA_LEN) {
                         Log.d(TAG, "memberMap长度大于1472，拆分为多个包发送");
                         for (int i = 0; i < gsonLength; i++) {
                             if (gsonLength - 1 - i > DATA_LEN) {
                                 buf = str.substring(i, i + DATA_LEN - 1).getBytes();
-                                outPacket = new DatagramPacket(buf, buf.length, multicastAddress, MULTICSAT_PORT);
+                                outPacket = new DatagramPacket(buf, buf.length, multicastAddress, multicastPort);
                                 multicastSocket.send(outPacket);
                                 i += DATA_LEN - 1;
                             } else {
                                 Log.d(TAG, "最后一个包");
                                 buf = str.substring(i, gsonLength - 1).getBytes();
-                                outPacket = new DatagramPacket(buf, buf.length, multicastAddress, MULTICSAT_PORT);
+                                outPacket = new DatagramPacket(buf, buf.length, multicastAddress, multicastPort);
                                 multicastSocket.send(outPacket);
                                 break;
                             }
@@ -241,14 +264,14 @@ public class MulticastThread implements Runnable {
                     } else {
                         Log.d(TAG, "memberMap长度小于1472，不需要拆分为多个包");
                         buf = str.getBytes();
-                        outPacket = new DatagramPacket(buf, buf.length, multicastAddress, MULTICSAT_PORT);
+                        outPacket = new DatagramPacket(buf, buf.length, multicastAddress, multicastPort);
                         multicastSocket.send(outPacket);
                     }
 
                 }else if(messageType == GM_MULTICAST_DETECT){
                     //System.out.println("看这里 "+multicastSocket.getInterface().getHostName());
                     buf = (GM_MULTICAST_DETECT +"/1231").getBytes();
-                    outPacket = new DatagramPacket(buf, buf.length, multicastAddress, MULTICSAT_PORT);
+                    outPacket = new DatagramPacket(buf, buf.length, multicastAddress, multicastPort);
                     multicastSocket.send(outPacket);
                 }else if(messageType == GO_MULTICAST_DELETE){
                     Gson gson = new Gson();
@@ -257,7 +280,7 @@ public class MulticastThread implements Runnable {
                     str = messageType + "/" + macAddress + "/" + gson.toJson(delMember);
 
                     buf = str.getBytes();
-                    outPacket = new DatagramPacket(buf, str.length(), multicastAddress, MULTICSAT_PORT);
+                    outPacket = new DatagramPacket(buf, str.length(), multicastAddress, multicastPort);
                     multicastSocket.send(outPacket);
                 }else if(messageType == GO_MULTICAST_DELETE_FORWARD){
                     Gson gson = new Gson();
@@ -268,7 +291,7 @@ public class MulticastThread implements Runnable {
                         str = GO_MULTICAST_DELETE + "/" + otherGOMAC + "/" + gson.toJson(delMember);
                     }
                     buf = str.getBytes();
-                    outPacket = new DatagramPacket(buf, str.length(), multicastAddress, MULTICSAT_PORT);
+                    outPacket = new DatagramPacket(buf, str.length(), multicastAddress, multicastPort);
                     multicastSocket.send(outPacket);
                 }
                 this.close();
@@ -283,16 +306,21 @@ public class MulticastThread implements Runnable {
         }else if(type == MULTICAST_READ){
             try {
                 if (multicastSocket == null || multicastSocket.isClosed()) {
-                    multicastAddress = InetAddress.getByName(MULTICAST_IP);
-                    multicastSocket = new MulticastSocket(MULTICSAT_PORT);
-                    multicastSocket.setLoopbackMode(true);
-                    Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
                     String regrex = readInterfaceRegrex;
+                    int multicastPort;
                     if(regrex.equals(P2P_INTERFACE_REGREX)){
                         macOfP2P = AddressObtain.getWlanMACAddress();
+                        multicastPort = MULTICSAT_P2P_PORT;
                     }else {
                         macOfP2P = AddressObtain.getP2pMACAddress();
+                        multicastPort = MULTICSAT_WLAN_PORT;
                     }
+
+                    multicastAddress = InetAddress.getByName(MULTICAST_IP);
+                    multicastSocket = new MulticastSocket(multicastPort);
+                    multicastSocket.setLoopbackMode(true);
+                    Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
+
                     Pattern pattern = Pattern.compile(regrex);
                     while (networkInterfaces.hasMoreElements()) {
                         NetworkInterface networkInterface1 = networkInterfaces.nextElement();
@@ -306,10 +334,10 @@ public class MulticastThread implements Runnable {
                     }
                     if(networkInterface != null && networkInterface.getInetAddresses() != null){
                         if(readInterfaceRegrex.equals(WLAN_INTERFACE_REGREX)){
-                            multicastSocket.joinGroup(new InetSocketAddress(multicastAddress, MULTICSAT_PORT), networkInterface);
+                            multicastSocket.joinGroup(new InetSocketAddress(multicastAddress,multicastPort), networkInterface);
                             Log.d("wlan多播读", "初始化完成！");
                         }else {
-                            multicastSocket.joinGroup(new InetSocketAddress(multicastAddress, MULTICSAT_PORT), networkInterface);
+                            multicastSocket.joinGroup(new InetSocketAddress(multicastAddress, multicastPort), networkInterface);
                             Log.d("p2p多播读", "初始化完成！");
                         }
 
@@ -330,13 +358,27 @@ public class MulticastThread implements Runnable {
             while (true){
                 try {
                     multicastSocket.receive(inPacket);
-                    System.out.println("组播收到的信息为："+ new String(buf, 0, inPacket.getLength()));
-                    System.out.println("地址："+ inPacket.getAddress().getHostAddress());
+                    System.out.println("组播收到的信息为：(" + inPacket.getLength() + ")" + new String(buf, 0, inPacket.getLength()));
+                    System.out.println("地址："+ inPacket.getAddress().getHostAddress() + " " +readInterfaceRegrex);
+
                     String str = new String(inPacket.getData(), 0, inPacket.getLength());
                     String mStr[] = str.split("/");
+
                     if(mStr[0].charAt(0) == GO_MULTICAST_MEMMAP){
+                        /*if(!inPacket.getAddress().getHostAddress().equals(DeviceDetailFragment.GO_ADDRESS)){
+                            Log.d(TAG, "只接收来自192.168.49.1的组播,返回");
+                            return;
+                        }*/
+                        if(readInterfaceRegrex.equals(WLAN_INTERFACE_REGREX) && mStr[4].charAt(0) == 'w'){
+                            //当接收接口为wlan，并且收到的包使用的发送接口也为wlan，应丢弃。（两个为LC的GO，彼此之间发送组播的情形）
+                            Log.d(TAG, "两个为LC的GO，彼此之间发送组播的情形，丢弃该包");
+                            continue; //千万别用return！！！！！！！
+                        }
+
                         if(mStr[2].equals(macAddress) || mStr[2].equals(macOfP2P)){
-                            Log.d(TAG, "收到本机memberMap，不做处理");
+                            Log.d(TAG, "收到本机memberMap，otherGOMAC冗余，不做处理");
+                        }else if(mStr[3].equals(macAddress) || mStr[3].equals(macOfP2P)){
+                            Log.d(TAG, "parentMAC冗余，不做处理");
                         }else {
                             Log.d(TAG, "继续组播memberMap");
                             Message msg = new Message();
@@ -344,17 +386,18 @@ public class MulticastThread implements Runnable {
                             Bundle bundle = new Bundle();
                             bundle.putString("macAddressofRelay", mStr[1]);
                             bundle.putString("otherGOMAC", mStr[2]);
-                            bundle.putChar("interfaceType", mStr[3].charAt(0));
-                            bundle.putString("memberMap", mStr[4]);
+                            bundle.putString("parentMAC", mStr[3]);
+                            bundle.putChar("interfaceType", mStr[4].charAt(0));
+                            bundle.putString("memberMap", mStr[5]);
                             msg.setData(bundle);
                             mHandler.sendMessage(msg);
                             //使用另一个网卡接口将该消息再组播给另外一个GO multicastWrite
                             //把mac、interface转换成当前设备所对应的参数值，再继续组播
                             Gson multicastMemberMapGson = new Gson();
-                            Map<String, Member> multicastMemberMap = multicastMemberMapGson.fromJson(mStr[4].trim(), new TypeToken<Map<String, Member>>(){}.getType());
+                            Map<String, BaseMember> multicastMemberMap = multicastMemberMapGson.fromJson(mStr[5].trim(), new TypeToken<Map<String, BaseMember>>(){}.getType());
                             if(mStr[1].equals(mStr[2])){
 
-                                if(mStr[3].charAt(0) == 'p'){
+                                if(mStr[4].charAt(0) == 'p'){
                                     multicastMemberMap.remove(AddressObtain.getWlanMACAddress());
                                     Log.d(TAG, "第一个中继GO，删除本机mac/p " + AddressObtain.getWlanMACAddress());
                                 }else {
@@ -364,13 +407,21 @@ public class MulticastThread implements Runnable {
 
                             }
 
-                            //需要修改。。。。。同时使用两个接口组播
-                            if(readInterfaceRegrex.equals(P2P_INTERFACE_REGREX)){
-                                MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP_FORWARD, mStr[2], WLAN_INTERFACE_REGREX, multicastMemberMap);
-                                new Thread(multicastThread).start();
-                            }else {
-                                MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP_FORWARD, mStr[2], P2P_INTERFACE_REGREX, multicastMemberMap);
-                                new Thread(multicastThread).start();
+                            //已修改。。。。。同时使用两个接口组播
+                            /*MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP_FORWARD, mStr[2], WLAN_INTERFACE_REGREX, multicastMemberMap);
+                            new Thread(multicastThread).start();
+                            multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP_FORWARD, mStr[2], P2P_INTERFACE_REGREX, multicastMemberMap);
+                            new Thread(multicastThread).start();*/
+                            if(multicastMemberMap.size() != 0){
+                                if(readInterfaceRegrex.equals(P2P_INTERFACE_REGREX)){
+                                    MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP_FORWARD, mStr[2], mStr[3], WLAN_INTERFACE_REGREX, multicastMemberMap);
+                                    new Thread(multicastThread).start();
+                                    multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP_FORWARD, mStr[2], mStr[3], P2P_INTERFACE_REGREX, multicastMemberMap);
+                                    new Thread(multicastThread).start();
+                                }else {
+                                    MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_MEMMAP_FORWARD, mStr[2], mStr[3], P2P_INTERFACE_REGREX, multicastMemberMap);
+                                    new Thread(multicastThread).start();
+                                }
                             }
                         }
                     }else if(mStr[0].charAt(0) == GO_MULTICAST_MEMMAP_FORWARD){
@@ -384,6 +435,15 @@ public class MulticastThread implements Runnable {
                         msg.setData(bundle);
                         mHandler.sendMessage(msg);
                     } else if(mStr[0].charAt(0) == GO_MULTICAST_DELETE){
+
+                        /*if(!inPacket.getAddress().getHostAddress().equals(DeviceDetailFragment.GO_ADDRESS)){
+                            Log.d(TAG, "只接收来自192.168.49.1的组播,返回");
+                            return;
+                        }*/
+                        if(mStr[2].equals(macAddress) || mStr[2].equals(macOfP2P)){
+                            Log.d(TAG, "收到本机memberMap，不做处理");
+                            continue;
+                        }
                         Message msg = new Message();
                         msg.what = 9;
                         Bundle bundle = new Bundle();
@@ -396,10 +456,15 @@ public class MulticastThread implements Runnable {
                         Member  member = gson.fromJson(mStr[2].trim(), new TypeToken<Member>(){}.getType());
 
 
-                        //需要修改。。。。。同时使用两个接口组播
-
+                        //已修改。。。。。同时使用两个接口组播
+                        /*MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_DELETE_FORWARD, WLAN_INTERFACE_REGREX, member, mStr[1]);
+                        new Thread(multicastThread).start();
+                        multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_DELETE_FORWARD, P2P_INTERFACE_REGREX, member, mStr[1]);
+                        new Thread(multicastThread).start();*/
                         if(readInterfaceRegrex.equals(P2P_INTERFACE_REGREX)){
                             MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_DELETE_FORWARD, WLAN_INTERFACE_REGREX, member, mStr[1]);
+                            new Thread(multicastThread).start();
+                            multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_DELETE_FORWARD, P2P_INTERFACE_REGREX, member, mStr[1]);
                             new Thread(multicastThread).start();
                         }else {
                             MulticastThread multicastThread = new MulticastThread(wiFiDirectActivity, MULTICAST_WRITE, GO_MULTICAST_DELETE_FORWARD, P2P_INTERFACE_REGREX, member, mStr[1]);
@@ -407,8 +472,8 @@ public class MulticastThread implements Runnable {
                         }
                         //广播给组员
                         Log.d(TAG, "继续组播delMember-广播给组员");
-                        UDPBroadcast udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.DELETE_MEMBER, member);
-                        new Thread(udpBroadcast).start();
+                        BroadcastThread broadcastThread = new BroadcastThread(BroadcastThread.BROADCAST_WRITE, BroadcastThread.DELETE_MEMBER, member);
+                        new Thread(broadcastThread).start();
                     }
                 } catch (IOException e) {
                     e.printStackTrace();

@@ -12,10 +12,8 @@ import android.util.Log;
 import com.google.gson.Gson;
 import com.wzj.bean.Member;
 import com.wzj.bean.Node;
-import com.wzj.util.AddressObtain;
 import com.wzj.util.GetPath;
 import com.wzj.util.StringToLong;
-import com.wzj.wifi_direct.BatteryReceiver;
 import com.wzj.wifi_direct.DeviceDetailFragment;
 import com.wzj.wifi_direct.R;
 import com.wzj.wifi_direct.WiFiDirectActivity;
@@ -105,10 +103,10 @@ public class ServerThread implements Runnable {
                 serverSocket.setReuseAddress(true);
                 serverSocket.bind(new InetSocketAddress(DeviceDetailFragment.GO_ADDRESS, DeviceDetailFragment.PORT));
                 //服务器端开启广播读
-                UDPBroadcast udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_READ, mHandler);
-                udpBroadcast.setIpAddress(DeviceDetailFragment.GO_ADDRESS);
-                new Thread(udpBroadcast).start();
-                DeviceDetailFragment.setUdpBroadcastRead(udpBroadcast);
+                BroadcastThread broadcastThread = new BroadcastThread(BroadcastThread.BROADCAST_READ, mHandler);
+                broadcastThread.setIpAddress(DeviceDetailFragment.GO_ADDRESS);
+                new Thread(broadcastThread).start();
+                DeviceDetailFragment.setBroadcastThreadRead(broadcastThread);
                 //周期性广播本机信息
                /* final Member member = new Member(DeviceDetailFragment.GO_ADDRESS, "(GO)"+myDevice.deviceName, myDevice.deviceAddress, BatteryReceiver.power);
                 if(broadcastTimer == null){
@@ -117,7 +115,7 @@ public class ServerThread implements Runnable {
                         @Override
                         public void run() {
                         member.setPower(BatteryReceiver.power);
-                        UDPBroadcast udpBroadcastWrite = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_MEMBER, member);
+                        BroadcastThread udpBroadcastWrite = new BroadcastThread(BroadcastThread.BROADCAST_WRITE, BroadcastThread.ADD_MEMBER, member);
                         new Thread(udpBroadcastWrite).start();
                         }
                     }, broadcastPeriod, broadcastPeriod);
@@ -127,9 +125,9 @@ public class ServerThread implements Runnable {
                     broadcastMemTimer.schedule(new TimerTask() {
                         @Override
                         public void run() {
-                            UDPBroadcast udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_MEMMAP, memberMap);
-                            new Thread(udpBroadcast).start();
-                            /*UDPBroadcast udpBroadcastCurrentMemMap = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_CURRENT_MEMMAP, deviceDetailFragment.getCurrentGroupMemberMap());
+                            BroadcastThread broadcastThread = new BroadcastThread(BroadcastThread.BROADCAST_WRITE, BroadcastThread.ADD_MEMMAP, memberMap);
+                            new Thread(broadcastThread).start();
+                            /*BroadcastThread udpBroadcastCurrentMemMap = new BroadcastThread(BroadcastThread.BROADCAST_WRITE, BroadcastThread.ADD_CURRENT_MEMMAP, deviceDetailFragment.getCurrentGroupMemberMap());
                             new Thread(udpBroadcastCurrentMemMap).start();*/
                         }
                     }, 0, broadcastPeriod);
@@ -172,7 +170,14 @@ public class ServerThread implements Runnable {
                 while (true) {
                     System.out.println("ServerThread:执行次数 "+ count++);
                     Socket client = serverSocket.accept();
-                    System.out.println("连接到新客户端！！！"+client.getInetAddress().getHostAddress());
+                    Socket newClient = tcpConnections.get(client.getInetAddress().getHostAddress());
+                    Log.d(TAG, "连接到新客户端！！！"+client.getInetAddress().getHostAddress());
+                    if(newClient != null && newClient.isConnected()){
+                        Log.d(TAG, "该新客户端已经存在，将之前的连接关闭，保存该新连接");
+                        newClient.close();
+                        newClient = null;
+                    }
+
                     //this.socket = client;
                     BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(client.getInputStream()));
                     String deviceName = bufferedReader.readLine();
@@ -191,17 +196,17 @@ public class ServerThread implements Runnable {
                     tcpConnections.put(client.getInetAddress().getHostAddress(), client);
                     //更新memberMap
                     Member member = new Member(client.getInetAddress().getHostAddress(), deviceName, macAddress, power);
-                    //加入GO的信息
-                    Member groupOwner = new Member(DeviceDetailFragment.GO_ADDRESS, "(GO)"+myDevice.deviceName, myDevice.deviceAddress, BatteryReceiver.power);
+
                     System.out.println("看这里power："+ member.getPower());
-                    DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment) wiFiDirectActivity.getFragmentManager().findFragmentById(R.id.frag_detail);
-                    if(!memberMap.containsKey(myDevice.deviceAddress)){
+                    /*if(!memberMap.containsKey(myDevice.deviceAddress)){
+                        //加入GO的信息
+                        Member groupOwner = new Member(DeviceDetailFragment.GO_ADDRESS, "(GO)"+myDevice.deviceName, myDevice.deviceAddress, BatteryReceiver.power);
                         memberMap.put(myDevice.deviceAddress, groupOwner);
                         deviceDetailFragment.getMemberNode().setmData(groupOwner);
                         //deviceDetailFragment.getCurrentGroupMemberMap().put(myDevice.deviceAddress, groupOwner);
-                    }
+                    }*/
                     memberMap.put(macAddress, member);
-                    deviceDetailFragment = (DeviceDetailFragment) wiFiDirectActivity.getFragmentManager().findFragmentById(R.id.frag_detail);
+                    DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment) wiFiDirectActivity.getFragmentManager().findFragmentById(R.id.frag_detail);
                     deviceDetailFragment.getMemberNode().addNode(new Node(member));
 
 
@@ -215,11 +220,11 @@ public class ServerThread implements Runnable {
                     writer.newLine();
                     writer.flush();
                     //将新增加的成员广播给现有组内成员
-                    /*UDPBroadcast udpBroadcast = new UDPBroadcast(memberMap);
-                    new Thread(udpBroadcast).start();*/
+                    /*BroadcastThread broadcastThread = new BroadcastThread(memberMap);
+                    new Thread(broadcastThread).start();*/
                     Log.d(TAG, "将新增加的成员广播给现有组内成员，组播给组外GO");
-                    UDPBroadcast udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_MEMMAP, memberMap);
-                    new Thread(udpBroadcast).start();
+                    BroadcastThread broadcastThread = new BroadcastThread(BroadcastThread.BROADCAST_WRITE, BroadcastThread.ADD_MEMMAP, memberMap);
+                    new Thread(broadcastThread).start();
 
                     //组播
                     Map<String, Member> currentGroupMemberMap = deviceDetailFragment.getMemberNode().getCurrentGroupMemberMap();
@@ -246,8 +251,8 @@ public class ServerThread implements Runnable {
 
 
                     //再次广播
-                    udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_MEMMAP, memberMap);
-                    new Thread(udpBroadcast).start();
+                    broadcastThread = new BroadcastThread(BroadcastThread.BROADCAST_WRITE, BroadcastThread.ADD_MEMMAP, memberMap);
+                    new Thread(broadcastThread).start();
 
                     System.out.println("ServerThread: "+ memberMap.size()+" " +memberMap.get(macAddress));
                     new Thread(new ServerRead(client)).start();
@@ -340,14 +345,18 @@ public class ServerThread implements Runnable {
                             //...
                             //...
                             String choiceIp = member.getIpAddress();
-                            Socket client = null;
-                            if(choiceIp.equals(DeviceDetailFragment.GO_ADDRESS)){
-                                for(Entry<String, Member> entry : memberMap.entrySet()){
-                                    if(!entry.getValue().getisCurrentGroup() && tcpConnections.containsKey(entry.getValue().getIpAddress())){
-                                        Log.d(TAG, "自右向左通信，GO中继，找到relayClient");
-                                        client = tcpConnections.get(entry.getValue().getIpAddress());
+                            Socket client = tcpConnections.get(member.getIpAddress());
+                            Log.d(TAG, "自右向左通信，GO中继，relayClient为LC");
+                            //if(!choiceIp.equals(DeviceDetailFragment.GO_ADDRESS)){
+                                if (client == null || client.isClosed()){
+                                    for(Entry<String, Member> entry : memberMap.entrySet()){
+                                        if(!entry.getValue().getisCurrentGroup() && tcpConnections.containsKey(entry.getValue().getIpAddress())){
+                                            Log.d(TAG, "自右向左通信，GO中继，找到relayClient不为LC");
+                                            client = tcpConnections.get(entry.getValue().getIpAddress());
+                                        }
                                     }
                                 }
+
                                 DataOutputStream dataOutputStream = new DataOutputStream(client.getOutputStream());
                                 DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
 
@@ -370,7 +379,7 @@ public class ServerThread implements Runnable {
                                 Message msg = new Message();
                                 msg.what = 2;
                                 mHandler.sendMessage(msg);
-                            }else {
+                           /* }else {
                                 //正常写
                                 client = tcpConnections.get(choiceIp);
                                 if(client != null){
@@ -396,11 +405,11 @@ public class ServerThread implements Runnable {
                                 }else {
                                     Log.d(TAG, "TCP连接未建立完全");
                                 }
-                            }
+                            }*/
 
                         }
 
-                    } else if(flag == StringToLong.transfer("Relaynod")){ //组间通信
+                    } /*else if(flag == StringToLong.transfer("Relaynod")){ //组间通信
                         DeviceDetailFragment deviceDetailFragment = (DeviceDetailFragment)wiFiDirectActivity.getFragmentManager().findFragmentById(R.id.frag_detail);
                         Map<String, Member> memberMap = deviceDetailFragment.getMemberMap();
                         Map<String, Socket> tcpConnections = deviceDetailFragment.getTcpConnections();
@@ -495,7 +504,7 @@ public class ServerThread implements Runnable {
                                     String macAddressofRelay = member.getMacAddressofRelay();
                                     //String choiceIp = memberMap.get(macAddressofRelay).getIpAddress();
                                     Socket client = null;
-                                    //在tcpConnections中找到MACofRelay设备的孩子节点
+                                    Log.d(TAG, "在tcpConnections中找到MACofRelay设备的孩子节点");
                                     Map<String, Node> children = deviceDetailFragment.getMemberNode().findNode(macAddressofRelay).getmChildren();
                                     for(String sMAC : children.keySet()){
                                         client = tcpConnections.get(memberMap.get(sMAC).getIpAddress());
@@ -529,7 +538,8 @@ public class ServerThread implements Runnable {
 
                             }
                         }
-                    } else{
+                    }*/
+                    else{
                         long totalLength = flag;
                         File file = new File(Environment.getExternalStorageDirectory() + "/"
                                 + wiFiDirectActivity.getPackageName() + "/wifip2pshared-" + System.currentTimeMillis()

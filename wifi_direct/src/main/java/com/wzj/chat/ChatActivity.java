@@ -24,8 +24,8 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.wzj.adapter.ChatAdapter;
 import com.wzj.bean.ChatModel;
-import com.wzj.service.SocketService;
 import com.wzj.communication.ClientThread;
+import com.wzj.service.SocketService;
 import com.wzj.wifi_direct.R;
 
 import java.net.Socket;
@@ -49,13 +49,14 @@ public class ChatActivity extends AppCompatActivity {
     private String my_name;
     private String my_macAddress;
     private List<ChatModel> chat = new ArrayList<>();
-    private Handler mhandler;
+    public static Handler CHAT_HANDLER;
+
     private ServiceConnection mConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             socketService = ((SocketService.MBinder)service).getService();
             socket = socketService.getSocket();
-            socketService.setHandler(mhandler);
+            socketService.setHandler(CHAT_HANDLER);
             System.out.println(socket.toString());
         }
 
@@ -66,8 +67,7 @@ public class ChatActivity extends AppCompatActivity {
     };
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-
-        mhandler = new Handler(){
+        CHAT_HANDLER = new Handler(){
             @Override
             public void handleMessage(Message msg) {
                 switch (msg.what){

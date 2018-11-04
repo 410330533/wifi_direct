@@ -58,7 +58,7 @@ public class ClientThread implements Runnable {
     public static Timer timer;
     private long broadcastPeriod = 1000*30;
     private Map<String, Member> memberMap;
-    String macAddress;
+    private String macAddress;
     public ClientThread(WiFiDirectActivity wiFiDirectActivity, Handler mHandler, String address, int port, WifiP2pDevice myDevice, Map<String, Socket> tcpConnections) {
         this.wiFiDirectActivity = wiFiDirectActivity;
         this.mHandler = mHandler;
@@ -187,10 +187,10 @@ public class ClientThread implements Runnable {
                     message.what = 6;
                     mHandler.sendMessage(message);
                     //启动广播包接收线程
-                    UDPBroadcast udpBroadcast = new UDPBroadcast(UDPBroadcast.BROADCAST_READ, mHandler);
-                    udpBroadcast.setIpAddress(ipAddress);
-                    new Thread(udpBroadcast).start();
-                    DeviceDetailFragment.setUdpBroadcastRead(udpBroadcast);
+                    BroadcastThread broadcastThread = new BroadcastThread(BroadcastThread.BROADCAST_READ, mHandler);
+                    broadcastThread.setIpAddress(ipAddress);
+                    new Thread(broadcastThread).start();
+                    DeviceDetailFragment.setBroadcastThreadRead(broadcastThread);
                     //周期性广播本机信息
                     /*final Member member = new Member(ipAddress, myDevice.deviceName, myDevice.deviceAddress, power);
                     if(timer == null){
@@ -199,7 +199,7 @@ public class ClientThread implements Runnable {
                             @Override
                             public void run() {
                                 member.setPower(power);
-                                UDPBroadcast udpBroadcastWrite = new UDPBroadcast(UDPBroadcast.BROADCAST_WRITE, UDPBroadcast.ADD_MEMBER, member);
+                                BroadcastThread udpBroadcastWrite = new BroadcastThread(BroadcastThread.BROADCAST_WRITE, BroadcastThread.ADD_MEMBER, member);
                                 new Thread(udpBroadcastWrite).start();
                             }
                         }, broadcastPeriod, broadcastPeriod);
@@ -392,78 +392,7 @@ public class ClientThread implements Runnable {
             }
         }
     }
-    //Relay写图片
-    /*private class RelayClientWrite implements Runnable {
-        private String mac;
 
-        public RelayClientWrite(String mac) {
-            this.mac = mac;
-        }
-
-        @Override
-        public void run() {
-
-            try {
-                DataOutputStream stream = new DataOutputStream(socket.getOutputStream());
-                ContentResolver cr = wiFiDirectActivity.getContentResolver();
-                InputStream in = null;
-                in = cr.openInputStream(uri);
-                File file = new File(GetPath.getPath(wiFiDirectActivity, uri));
-                Log.d(WiFiDirectActivity.TAG, "ClientWrite：客户端写入开始 " + GetPath.getPath(wiFiDirectActivity, uri));
-                long flag = StringToLong.transfer("Relaynod");
-                stream.writeLong(flag);
-                stream.writeLong(file.length());
-                stream.writeBytes(mac);
-                byte buf[] = new byte[1024];
-                int length;
-                while ((length = in.read(buf)) != -1) {
-                    //将buf中从0到length个字节写到输出流
-                    stream.write(buf, 0, length);
-                }
-                in.close();
-                stream.flush();
-                //stream.close();
-                Log.d(WiFiDirectActivity.TAG, "ClientWrite：客户端写入完毕");
-                Message msg = new Message();
-                msg.what = 2;
-                mHandler.sendMessage(msg);
-            } catch (FileNotFoundException e) {
-                Log.d(WiFiDirectActivity.TAG, e.toString());
-                e.printStackTrace();
-
-            } catch (IOException e) {
-                Log.d(WiFiDirectActivity.TAG, e.toString());
-                if(socket != null ){
-                    if(socket.getInetAddress().getHostAddress() != null){
-                        if(tcpConnections.containsKey(socket.getInetAddress().getHostAddress())){
-                            tcpConnections.remove(socket.getInetAddress().getHostAddress());
-                        }
-                    }
-                    try {
-                        socket.close();
-                    } catch (IOException e1) {
-                        e1.printStackTrace();
-                    }
-                }
-                System.out.println(e.getMessage());
-                e.printStackTrace();
-
-                if(e.getMessage().equals("sendto failed: EPIPE (Broken pipe)")){
-                    try {
-                        socket.close();
-                        socket = null;
-                        Log.d(WiFiDirectActivity.TAG, "ClientThread：关闭client socket");
-                        Message msg = new Message();
-                        msg.what = 3;
-                        mHandler.sendMessage(msg);
-                    } catch (IOException e1) {
-                        Log.d(WiFiDirectActivity.TAG, e1.toString());
-                        e.printStackTrace();
-                    }
-                }
-            }
-        }
-    }*/
     //Relay写图片
     private class RelayClientWrite implements Runnable {
         private String mac;
@@ -725,24 +654,33 @@ public class ClientThread implements Runnable {
                                 mHandler.sendMessage(msg);
 
                             }else if(memberMap.containsKey(mac)){
-                                Log.d(TAG, "目标设备不在本组内，继续relay");
-                                //组主选择RelayClient
-                                //...
-                                //...
+
                                 String macAddressofRelay = member.getMacAddressofRelay();
+                                char interfaceType = member.getInterfaceType();
                                 String choiceIp = memberMap.get(macAddressofRelay).getIpAddress();
                                 Socket client = tcpConnections.get(choiceIp);
-                                if(client == null){
-                                    client = new Socket();
-                                    client.connect(new InetSocketAddress(choiceIp, DeviceDetailFragment.MS_PORT));
-                                    ClientRead clientRead = new ClientRead(wiFiDirectActivity, client);
-                                    new Thread(clientRead).start();
-                                    tcpConnections.put(client.getInetAddress().getHostAddress(), client);
+                                String messageType = "Relaynod";
+                                Log.d(TAG, "目标设备不在本组内，继续relay "+ interfaceType);
+
+                                if(interfaceType == 'p'){
+                                    Log.d(TAG, "GO中继");
+                                    client = tcpConnections.get(DeviceDetailFragment.GO_ADDRESS);
+                                    messageType = "Relayngo";
+                                }else {
+                                    if(client == null){
+                                        Log.d(TAG, "'w'- 自左向右");
+                                        client = new Socket();
+                                        client.connect(new InetSocketAddress(choiceIp, DeviceDetailFragment.MS_PORT));
+                                        ClientRead clientRead = new ClientRead(wiFiDirectActivity, client);
+                                        new Thread(clientRead).start();
+                                        tcpConnections.put(client.getInetAddress().getHostAddress(), client);
+                                    }
                                 }
+
                                 DataOutputStream dataOutputStream = new DataOutputStream(client.getOutputStream());
                                 DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
 
-                                long type = StringToLong.transfer("Relaynod");
+                                long type = StringToLong.transfer(messageType);
                                 long totalLength = flag;
                                 dataOutputStream.writeLong(type);
                                 dataOutputStream.writeLong(totalLength);
